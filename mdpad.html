@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Markdown 编辑器</title>
+<style>
+  :root{
+    --bg:#fff; --panel:#f7f7f9; --line:#e3e3e8; --txt:#1c1c1e; --sub:#6e6e73;
+    --accent:#0a84ff; --code:#f1f1f5; --quote:#f7f7f9; --chip:#f0f0f4;
+    --hl:#0a84ff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#000; --panel:#131315; --line:#2c2c2e; --txt:#f2f2f7; --sub:#9a9aa0;
+      --accent:#0a84ff; --code:#1f1f22; --quote:#191919; --chip:#232326;
+    }
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;height:100%}
+  body{
+    display:flex; flex-direction:column; height:100vh; height:100dvh; overflow:hidden;
+    background:var(--bg); color:var(--txt);
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  /* ---------- 顶栏 ---------- */
+  header{flex:0 0 auto; background:var(--panel); border-bottom:1px solid var(--line); padding-top:env(safe-area-inset-top)}
+  .topbar{display:flex; align-items:center; gap:6px; padding:7px 10px}
+  .docname{
+    flex:1 1 auto; min-width:0; border:0; background:transparent; color:var(--txt);
+    font:600 15px/1.3 inherit; padding:5px 6px; border-radius:8px; outline:none;
+  }
+  .docname:focus{background:var(--bg); box-shadow:0 0 0 2px rgba(10,132,255,.25)}
+  .tbtn{
+    border:0; background:var(--chip); color:var(--txt); border-radius:8px;
+    font:600 13px/1 inherit; padding:8px 10px; cursor:pointer;
+  }
+  .tbtn:active{opacity:.6}
+  .tbtn.on{background:var(--accent); color:#fff}
+  .viewbar{display:flex; align-items:center; gap:8px; padding:0 10px 7px}
+  .seg{display:flex; gap:2px; background:var(--chip); border-radius:9px; padding:2px}
+  .seg button{
+    border:0; background:transparent; color:var(--sub); font:600 12.5px/1 inherit;
+    padding:6px 9px; border-radius:7px; cursor:pointer; white-space:nowrap;
+  }
+  .seg button.on{background:var(--bg); color:var(--txt); box-shadow:0 1px 3px rgba(0,0,0,.14)}
+  @media (prefers-color-scheme: dark){ .seg button.on{background:#3a3a3e} }
+  .chk{display:flex; align-items:center; gap:4px; font-size:12.5px; color:var(--sub); margin-left:auto; white-space:nowrap}
+  .chk input{width:16px; height:16px; accent-color:var(--accent)}
+  /* ---------- 工具栏 ---------- */
+  .tools{
+    display:flex; gap:6px; overflow-x:auto; padding:0 10px 8px; scrollbar-width:none;
+    -webkit-overflow-scrolling:touch;
+  }
+  .tools::-webkit-scrollbar{display:none}
+  .chip{
+    flex:0 0 auto; border:1px solid var(--line); background:var(--bg); color:var(--txt);
+    border-radius:9px; min-width:34px; height:32px; padding:0 9px; cursor:pointer;
+    font:600 13.5px/1 ui-monospace,Menlo,monospace; display:flex; align-items:center; justify-content:center;
+  }
+  .chip:active{background:var(--chip); transform:scale(.96)}
+  .chip.accent{color:var(--accent)}
+  /* ---------- 工作区 ---------- */
+  .workspace{flex:1 1 auto; display:flex; min-height:0; min-width:0; overflow:hidden}
+  .workspace.col{flex-direction:column}
+  .pane{min-width:0; min-height:0; display:flex; flex-direction:column; overflow:hidden}
+  #paneCode{flex:0.5 1 0}
+  #panePrev{flex:0.5 1 0; background:var(--bg)}
+  #editor{
+    flex:1 1 auto; width:100%; min-height:0; border:0; outline:none; resize:none;
+    padding:12px 12px 40px; background:var(--panel); color:var(--txt);
+    font:15px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;
+    -webkit-text-size-adjust:100%; tab-size:2;
+  }
+  #preview{
+    flex:1 1 auto; min-height:0; overflow:auto; padding:14px 16px 60px;
+    -webkit-overflow-scrolling:touch; font-size:16px; line-height:1.65;
+  }
+  .handle{
+    flex:0 0 11px; background:transparent; touch-action:none; cursor:col-resize;
+    display:flex; align-items:center; justify-content:center; position:relative;
+  }
+  .workspace.col .handle{cursor:row-resize}
+  .handle::before{
+    content:''; width:3px; height:34px; border-radius:2px; background:var(--line); transition:background .15s;
+  }
+  .workspace.col .handle::before{width:34px; height:3px}
+  .handle.drag::before{background:var(--accent)}
+  .handle.drag{background:rgba(10,132,255,.08)}
+  /* ---------- 状态栏 ---------- */
+  .status{
+    flex:0 0 auto; display:flex; align-items:center; gap:10px; padding:4px 12px;
+    border-top:1px solid var(--line); background:var(--panel); color:var(--sub);
+    font-size:11.5px; font-family:ui-monospace,Menlo,monospace;
+  }
+  #stat{flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  /* ---------- 预览排版 ---------- */
+  .preview h1,.preview h2,.preview h3,.preview h4,.preview h5,.preview h6{
+    line-height:1.35; margin:1.1em 0 .45em; font-weight:650; letter-spacing:-.01em;
+  }
+  .preview h1{font-size:1.7em; border-bottom:1px solid var(--line); padding-bottom:.25em}
+  .preview h2{font-size:1.36em; border-bottom:1px solid var(--line); padding-bottom:.2em}
+  .preview h3{font-size:1.18em}
+  .preview h4{font-size:1.05em}
+  .preview > :first-child{margin-top:0}
+  .preview p{margin:.65em 0}
+  .preview a{color:var(--accent); text-decoration:none}
+  .preview a:active{text-decoration:underline}
+  .preview code{
+    background:var(--code); padding:.12em .35em; border-radius:5px;
+    font:.9em/1.4 ui-monospace,Menlo,monospace; word-break:break-word;
+  }
+  .preview pre{
+    background:var(--code); padding:11px 12px; border-radius:10px; overflow-x:auto;
+    margin:.8em 0; -webkit-overflow-scrolling:touch;
+  }
+  .preview pre code{background:none; padding:0; font-size:13px; line-height:1.55; white-space:pre}
+  .preview blockquote{
+    margin:.8em 0; padding:.4em .9em; border-left:3px solid var(--line);
+    background:var(--quote); color:var(--sub); border-radius:0 8px 8px 0;
+  }
+  .preview blockquote p{margin:.25em 0}
+  .preview ul,.preview ol{margin:.5em 0; padding-left:1.5em}
+  .preview li{margin:.22em 0}
+  .preview li input[type=checkbox]{vertical-align:-2px; margin-right:.35em; accent-color:var(--accent)}
+  .preview li.task{list-style:none; margin-left:-1.1em}
+  .preview hr{border:0; border-top:1px solid var(--line); margin:1.4em 0}
+  .preview img{max-width:100%; border-radius:8px; display:block; margin:.6em 0}
+  .preview table{border-collapse:collapse; font-size:.94em; margin:.8em 0; min-width:60%}
+  .preview th,.preview td{border:1px solid var(--line); padding:6px 10px; text-align:left}
+  .preview th{background:var(--quote); font-weight:650}
+  .preview .tblwrap{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  .preview .empty{color:var(--sub); font-size:14px; text-align:center; margin-top:40px}
+  .toast{
+    position:fixed; left:50%; bottom:36px; transform:translateX(-50%) translateY(10px);
+    background:rgba(28,28,30,.92); color:#fff; font-size:13px; padding:8px 14px; border-radius:20px;
+    opacity:0; pointer-events:none; transition:all .22s;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+</style>
+<link rel="apple-touch-icon" href="icon-mdpad.png">
+<meta name="apple-mobile-web-app-title" content="MD 编辑器">
+<meta name="theme-color" content="#0a84ff">
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <input id="docName" class="docname" value="未命名.md" spellcheck="false" autocapitalize="off" autocorrect="off">
+      <button class="tbtn" id="btnOpen">打开</button>
+      <button class="tbtn" id="btnSave">保存</button>
+      <button class="tbtn" id="btnCopy">复制</button>
+    </div>
+    <div class="viewbar">
+      <div class="seg" id="orientSeg">
+        <button data-orient="row" class="on">左右</button>
+        <button data-orient="col">上下</button>
+      </div>
+      <div class="seg" id="paneSeg">
+        <button data-show="both" class="on">双栏</button>
+        <button data-show="code">仅代码</button>
+        <button data-show="prev">仅预览</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="pairOn" checked>配对</label>
+    </div>
+    <div class="tools" id="tools"></div>
+  </header>
+
+  <main class="workspace" id="ws">
+    <section class="pane" id="paneCode"><textarea id="editor" spellcheck="false" autocapitalize="off" autocorrect="off" placeholder="在这里写 Markdown…"></textarea></section>
+    <div class="handle" id="handle" title="拖动调整大小（双击复位）"><span></span></div>
+    <section class="pane" id="panePrev"><article class="preview" id="preview"></article></section>
+  </main>
+
+  <div class="status">
+    <span id="stat">0 字</span>
+    <span id="saveState"></span>
+  </div>
+
+  <input type="file" id="fileInput" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden>
+  <div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   极简 Markdown 渲染器（无外部依赖）
+   支持：标题/粗体/斜体/删除线/行内代码/代码块/引用/有序无序列表/
+        任务清单/表格/分隔线/链接/图片/段落换行
+   ========================================================= */
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function inlineMD(text){
+  const codes=[];
+  // 先把行内代码抽出来，避免里面的符号被当成语法
+  let s = text.replace(/`([^`]+)`/g, (m,c)=>{ codes.push(c); return '\u0001'+(codes.length-1)+'\u0001' });
+  s = esc(s);
+
+  // 图片
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g, (m,alt,src,title)=> {
+    const safe = src.replace(/"/g,'%22');
+    return '<img src="'+safe+'" alt="'+alt.replace(/"/g,'&quot;')+'"'+(title?' title="'+title+'"':'')+'>';
+  });
+  // 链接
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g, (m,txt,href,title)=> {
+    const blank = /^(https?:|mailto:)/i.test(href) ? ' target="_blank" rel="noopener"' : '';
+    return '<a href="'+href.replace(/"/g,'%22')+'"'+blank+(title?' title="'+title+'"':'')+'>'+txt+'</a>';
+  });
+  // 强调
+  s = s.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+  s = s.replace(/(^|[^_\w])_([^_\n]+)_/g, '$1<em>$2</em>');
+  s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+
+  // 还原行内代码
+  s = s.replace(/\u0001(\d+)\u0001/g, (m,i)=> '<code>'+esc(codes[+i])+'</code>');
+  // 软换行
+  return s.replace(/\n/g,'<br>');
+}
+
+const RE_HEAD   = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
+const RE_HR     = /^\s{0,3}((\*\s*){3,}|(-\s*){3,}|(_\s*){3,})$/;
+const RE_QUOTE  = /^\s{0,3}>\s?/;
+const RE_LIST   = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+const RE_FENCE  = /^\s*(```|~~~)\s*([\w+-]*)\s*$/;
+
+function isTableSep(line){
+  if(!line || !/[|-]/.test(line)) return false;
+  const cells = line.replace(/^\s*\|/,'').replace(/\|\s*$/,'').split('|');
+  return cells.length>0 && cells.every(c=>/^\s*:?-{2,}:?\s*$/.test(c));
+}
+function splitRow(line){
+  return line.replace(/^\s*\|/,'').replace(/\|\s*$/,'').split('|').map(c=>c.trim());
+}
+
+function renderList(items){
+  let html='';
+  const stack=[];
+  for(const it of items){
+    while(stack.length && it.indent < stack[stack.length-1].indent){
+      html += '</li></'+stack.pop().tag+'>';
+    }
+    const top = stack[stack.length-1];
+    if(!top || it.indent > top.indent){
+      const tag = it.ordered ? 'ol' : 'ul';
+      stack.push({indent:it.indent, tag});
+      html += '<'+tag+'>';
+    }else{
+      html += '</li>';
+      if(it.ordered !== (top.tag==='ol')){
+        html += '</'+top.tag+'>';
+        stack.pop();
+        const tag = it.ordered ? 'ol' : 'ul';
+        stack.push({indent:it.indent, tag});
+        html += '<'+tag+'>';
+      }
+    }
+    let body = it.text, box = null;
+    const tm = body.match(/^\[([ xX])\]\s+(.*)$/);
+    if(tm){ box = tm[1].toLowerCase()==='x'; body = tm[2]; }
+    html += '<li'+(box===null?'':' class="task"')+'>' + (box===null ? '' : '<input type="checkbox" disabled'+(box?' checked':'')+'>') + inlineMD(body);
+  }
+  while(stack.length) html += '</li></'+stack.pop().tag+'>';
+  return html;
+}
+
+function mdToHtml(src){
+  const lines = src.replace(/\r\n?/g,'\n').split('\n');
+  let out='', i=0;
+  const blank = l => /^\s*$/.test(l);
+
+  while(i < lines.length){
+    let line = lines[i];
+    if(blank(line)){ i++; continue; }
+
+    // 代码块
+    let m = line.match(RE_FENCE);
+    if(m){
+      const fence = m[1], lang = m[2] || '';
+      const buf = [];
+      i++;
+      while(i<lines.length && !new RegExp('^\\s*'+fence+'\\s*$').test(lines[i])){ buf.push(lines[i]); i++; }
+      i++; // 跳过结束行
+      out += '<pre><code'+(lang?' class="language-'+esc(lang)+'"':'')+'>'+esc(buf.join('\n'))+'</code></pre>';
+      continue;
+    }
+
+    // 标题
+    m = line.match(RE_HEAD);
+    if(m){
+      const lv = m[1].length;
+      out += '<h'+lv+'>'+inlineMD(m[2])+'</h'+lv+'>';
+      i++; continue;
+    }
+
+    // 分隔线
+    if(RE_HR.test(line)){ out += '<hr>'; i++; continue; }
+
+    // 引用
+    if(RE_QUOTE.test(line)){
+      const buf=[];
+      while(i<lines.length && RE_QUOTE.test(lines[i])){ buf.push(lines[i].replace(RE_QUOTE,'')); i++; }
+      out += '<blockquote>'+mdToHtml(buf.join('\n'))+'</blockquote>';
+      continue;
+    }
+
+    // 表格
+    if(line.includes('|') && i+1<lines.length && isTableSep(lines[i+1])){
+      const head = splitRow(line);
+      const aligns = splitRow(lines[i+1]).map(c=>{
+        const l = c.startsWith(':'), r = c.endsWith(':');
+        return l&&r ? 'center' : (r ? 'right' : (l ? 'left' : ''));
+      });
+      i += 2;
+      let body='';
+      while(i<lines.length && lines[i].includes('|') && !blank(lines[i])){
+        const cells = splitRow(lines[i]);
+        body += '<tr>' + head.map((_,k)=>{
+          const a = aligns[k] ? ' style="text-align:'+aligns[k]+'"' : '';
+          return '<td'+a+'>'+inlineMD(cells[k]||'')+'</td>';
+        }).join('') + '</tr>';
+        i++;
+      }
+      out += '<div class="tblwrap"><table><thead><tr>'
+          + head.map((h,k)=>'<th'+(aligns[k]?' style="text-align:'+aligns[k]+'"':'')+'>'+inlineMD(h)+'</th>').join('')
+          + '</tr></thead><tbody>'+body+'</tbody></table></div>';
+      continue;
+    }
+
+    // 列表
+    if(RE_LIST.test(line)){
+      const items=[];
+      while(i<lines.length){
+        const lm = lines[i].match(RE_LIST);
+        if(!lm) break;
+        const indent = lm[1].replace(/\t/g,'  ').length;
+        items.push({indent, ordered:/\d/.test(lm[2]), text:lm[3]});
+        i++;
+        // 列表项的续行（缩进、且不是新的列表项）
+        while(i<lines.length && /^\s{2,}\S/.test(lines[i]) && !RE_LIST.test(lines[i]) && !blank(lines[i])){
+          items[items.length-1].text += ' ' + lines[i].trim();
+          i++;
+        }
+      }
+      out += renderList(items);
+      continue;
+    }
+
+    // 段落
+    const buf=[];
+    while(i<lines.length && !blank(lines[i]) && !RE_HEAD.test(lines[i]) && !RE_FENCE.test(lines[i])
+          && !RE_HR.test(lines[i]) && !RE_QUOTE.test(lines[i]) && !RE_LIST.test(lines[i])
+          && !(lines[i].includes('|') && i+1<lines.length && isTableSep(lines[i+1]))){
+      buf.push(lines[i]); i++;
+    }
+    if(buf.length) out += '<p>'+inlineMD(buf.join('\n'))+'</p>';
+    else { i++; }   // 防御：避免死循环
+  }
+  return out;
+}
+
+/* =========================================================
+   应用逻辑
+   ========================================================= */
+const $ = id => document.getElementById(id);
+const editor = $('editor'), previewEl = $('preview'), ws = $('ws'), handle = $('handle');
+const STORE = 'mdpad.v1';
+
+const app = {
+  text:'', name:'未命名.md',
+  orient:'row', show:'both', ratio:0.5, pair:true
+};
+
+/* ---------- 渲染 & 状态 ---------- */
+let renderTimer=null, saveTimer=null;
+function scheduleRender(){ clearTimeout(renderTimer); renderTimer=setTimeout(renderPreview, 120) }
+function renderPreview(){
+  const src = editor.value;
+  app.text = src;
+  previewEl.innerHTML = src.trim()
+    ? mdToHtml(src)
+    : '<div class="empty">左边打点字，右边就会显示效果</div>';
+  updateStat();
+}
+function updateStat(){
+  const t = editor.value;
+  const chars = t.replace(/\s/g,'').length;
+  const lines = t ? t.split('\n').length : 0;
+  const words = (t.match(/[\u4e00-\u9fa5]/g)||[]).length + (t.match(/[A-Za-z0-9_]+/g)||[]).length;
+  $('stat').textContent = `${chars} 字 · ${words} 词 · ${lines} 行`;
+}
+function afterEdit(){ scheduleRender(); saveSoon(); }
+
+/* ---------- 编辑辅助 ---------- */
+function surround(before, after, placeholder){
+  const s = editor.selectionStart, e = editor.selectionEnd;
+  const sel = editor.value.slice(s, e);
+  if(sel){
+    editor.setRangeText(before+sel+after, s, e, 'end');
+    editor.setSelectionRange(s+before.length, s+before.length+sel.length);
+  }else{
+    const mid = placeholder || '';
+    editor.setRangeText(before+mid+after, s, e, 'end');
+    editor.setSelectionRange(s+before.length, s+before.length+mid.length);
+  }
+  afterEdit(); editor.focus();
+}
+function insertSnippet(text, caretOffset, selLen){
+  const s = editor.selectionStart;
+  editor.setRangeText(text, s, editor.selectionEnd, 'end');
+  if(caretOffset===undefined) editor.setSelectionRange(s+text.length, s+text.length);
+  else editor.setSelectionRange(s+caretOffset, s+caretOffset+(selLen||0));
+  afterEdit(); editor.focus();
+}
+function eachLine(fn){
+  const v = editor.value, s = editor.selectionStart, e = editor.selectionEnd;
+  const start = v.lastIndexOf('\n', s-1)+1;
+  let end = v.indexOf('\n', e);
+  if(end<0) end = v.length;
+  const next = v.slice(start, end).split('\n').map(fn).join('\n');
+  editor.setRangeText(next, start, end, 'end');
+  editor.setSelectionRange(start, start+next.length);
+  afterEdit(); editor.focus();
+}
+function setHeading(level){
+  eachLine(line=>{
+    const m = line.match(/^(#{1,6})\s+(.*)$/);
+    if(m && m[1].length===level) return m[2];
+    return '#'.repeat(level)+' '+line.replace(/^#{1,6}\s+/,'');
+  });
+}
+function prefixLines(prefix){
+  eachLine(line=>{
+    if(line.startsWith(prefix)) return line.slice(prefix.length);
+    return prefix + line.replace(/^([-*+]\s(\[[ xX]\]\s)?|>\s?|\d+[.)]\s)/,'');
+  });
+}
+function orderedList(){
+  const v = editor.value, s = editor.selectionStart, e = editor.selectionEnd;
+  const start = v.lastIndexOf('\n', s-1)+1;
+  let end = v.indexOf('\n', e); if(end<0) end = v.length;
+  const lines = v.slice(start,end).split('\n');
+  const allOrdered = lines.every(l=>/^\d+[.)]\s/.test(l));
+  const next = lines.map((l,i)=> allOrdered
+      ? l.replace(/^\d+[.)]\s/,'')
+      : (i+1)+'. '+l.replace(/^\d+[.)]\s/,'')).join('\n');
+  editor.setRangeText(next, start, end, 'end');
+  editor.setSelectionRange(start, start+next.length);
+  afterEdit(); editor.focus();
+}
+function insertTable(){
+  insertSnippet('| 列 1 | 列 2 | 列 3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |', 2, 3);
+}
+function inFence(v, pos){
+  return ((v.slice(0,pos).match(/```/g)||[]).length % 2) === 1;
+}
+
+/* ---------- 智能配对 ---------- */
+const PAIR_OPEN = {
+  '*':['*','*'], '_':['_','_'], '`':['`','`'], '~':['~~','~~'],
+  '(':['(',')'], '[':['[',']'], '{':['{','}']
+};
+const CLOSERS = [')',']','}'];
+
+function handlePairKey(e){
+  if(!app.pair || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return false;
+  const ch = e.key;
+  if(!ch || ch.length!==1) return false;
+
+  const v = editor.value, s = editor.selectionStart, t = editor.selectionEnd;
+  if(inFence(v,s)) return false;
+
+  if(CLOSERS.includes(ch) && s===t && v[s]===ch){
+    e.preventDefault(); editor.setSelectionRange(s+1,s+1); return true;
+  }
+
+  if(ch==='*'){
+    if(t>s){ e.preventDefault(); surround('*','*'); return true }
+    const p1=v[s-1], p2=v[s-2], n1=v[s], n2=v[s+1];
+    if(p1==='*' && p2!=='*' && n1==='*' && n2!=='*'){
+      e.preventDefault();
+      editor.setRangeText('****', s-1, s+1, 'end');
+      editor.setSelectionRange(s+1, s+1);
+      afterEdit(); return true;
+    }
+    if(n1==='*' && n2==='*'){ e.preventDefault(); editor.setSelectionRange(s+2,s+2); return true }
+    const lineStart = v.lastIndexOf('\n', s-1)+1;
+    if(/^\s*$/.test(v.slice(lineStart,s))) return false;   // 行首当列表符号
+  }
+
+  const pair = PAIR_OPEN[ch];
+  if(!pair) return false;
+  e.preventDefault();
+  if(t>s) surround(pair[0], pair[1]);
+  else{
+    editor.setRangeText(pair[0]+pair[1], s, s, 'end');
+    editor.setSelectionRange(s+pair[0].length, s+pair[0].length);
+    afterEdit();
+  }
+  return true;
+}
+
+/* ---------- 键盘 ---------- */
+editor.addEventListener('keydown', e=>{
+  if(handlePairKey(e)) return;
+
+  if(e.key==='Tab'){ e.preventDefault(); insertSnippet('  '); return }
+
+  if(e.key==='Enter' && editor.selectionStart===editor.selectionEnd){
+    const v = editor.value, s = editor.selectionStart;
+    const lineStart = v.lastIndexOf('\n', s-1)+1;
+    const cur = v.slice(lineStart, s);
+    const m = cur.match(/^(\s*)([-*+]\s\[[ xX]\]\s|[-*+]\s|>\s?|(\d+)[.)]\s)/);
+    if(m){
+      e.preventDefault();
+      const indent = m[1];
+      if(cur.trim()===m[2].trim()){
+        // 空列表项再回车 → 去掉标记，跳出列表
+        editor.setRangeText('\n'+indent, lineStart, s, 'end');
+        const pos = lineStart + 1 + indent.length;
+        editor.setSelectionRange(pos, pos);
+      }else{
+        let marker = m[2];
+        if(m[3]) marker = (parseInt(m[3],10)+1) + '. ';
+        const ins = '\n'+indent+marker;
+        editor.setRangeText(ins, s, s, 'end');
+        editor.setSelectionRange(s+ins.length, s+ins.length);
+      }
+      afterEdit(); return;
+    }
+  }
+});
+
+editor.addEventListener('input', afterEdit);
+
+/* ---------- 工具栏 ---------- */
+const TOOLS = [
+  {label:'B',   act:()=>surround('**','**','粗体'), cls:'accent'},
+  {label:'I',   act:()=>surround('*','*','斜体')},
+  {label:'S',   act:()=>surround('~~','~~','删除线')},
+  {label:'`',   act:()=>surround('`','`','code')},
+  {label:'H1',  act:()=>setHeading(1)},
+  {label:'H2',  act:()=>setHeading(2)},
+  {label:'H3',  act:()=>setHeading(3)},
+  {label:'❝',   act:()=>prefixLines('> ')},
+  {label:'•',   act:()=>prefixLines('- ')},
+  {label:'1.',  act:orderedList},
+  {label:'☑',   act:()=>prefixLines('- [ ] ')},
+  {label:'🔗',  act:()=>insertSnippet('[链接文字](https://)', 1, 4)},
+  {label:'🖼',   act:()=>insertSnippet('![图片说明](图片地址)', 2, 4)},
+  {label:'▦',   act:insertTable},
+  {label:'—',   act:()=>insertSnippet('\n\n---\n\n')},
+  {label:'```', act:()=>insertSnippet('\n```\n\n```\n', 5), cls:'accent'}
+];
+(function buildTools(){
+  const box = $('tools');
+  TOOLS.forEach(t=>{
+    const b = document.createElement('button');
+    b.className = 'chip' + (t.cls?' '+t.cls:'');
+    b.textContent = t.label;
+    b.onclick = ()=>{ editor.focus(); t.act() };
+    box.appendChild(b);
+  });
+})();
+
+/* ---------- 布局 ---------- */
+function applyLayout(){
+  ws.classList.toggle('col', app.orient==='col');
+  const code = $('paneCode'), prev = $('panePrev');
+  code.style.display = app.show==='prev' ? 'none' : '';
+  prev.style.display = app.show==='code' ? 'none' : '';
+  handle.style.display = app.show==='both' ? '' : 'none';
+  if(app.show==='both'){
+    code.style.flex = app.ratio+' 1 0';
+    prev.style.flex = (1-app.ratio)+' 1 0';
+  }else{
+    code.style.flex = '1 1 auto';
+    prev.style.flex = '1 1 auto';
+  }
+  Array.from($('orientSeg').children).forEach(b=>b.classList.toggle('on', b.dataset.orient===app.orient));
+  Array.from($('paneSeg').children).forEach(b=>b.classList.toggle('on', b.dataset.show===app.show));
+  saveSoon();
+}
+$('orientSeg').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b) return;
+  app.orient = b.dataset.orient; applyLayout();
+});
+$('paneSeg').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b) return;
+  app.show = b.dataset.show; applyLayout();
+});
+
+let dragging = false;
+handle.addEventListener('pointerdown', e=>{
+  if(app.show!=='both') return;
+  dragging = true; handle.classList.add('drag');
+  try{ handle.setPointerCapture(e.pointerId) }catch(err){}
+  e.preventDefault();
+});
+handle.addEventListener('pointermove', e=>{
+  if(!dragging) return;
+  const r = ws.getBoundingClientRect();
+  const f = app.orient==='col'
+    ? (e.clientY - r.top) / r.height
+    : (e.clientX - r.left) / r.width;
+  app.ratio = Math.min(0.85, Math.max(0.15, f));
+  applyLayout();
+  e.preventDefault();
+});
+['pointerup','pointercancel'].forEach(ev=>{
+  handle.addEventListener(ev, ()=>{ if(!dragging) return; dragging=false; handle.classList.remove('drag') });
+});
+handle.addEventListener('dblclick', ()=>{ app.ratio=0.5; applyLayout() });
+
+/* ---------- 文件 ---------- */
+function normalizeName(){
+  let n = ($('docName').value || '未命名').trim();
+  if(!/\.(md|markdown|txt)$/i.test(n)) n += '.md';
+  return n;
+}
+$('btnOpen').onclick = ()=> $('fileInput').click();
+$('fileInput').addEventListener('change', e=>{
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{
+    editor.value = r.result;
+    $('docName').value = f.name;
+    renderPreview(); saveSoon();
+    toast('已打开 '+f.name);
+  };
+  r.readAsText(f, 'utf-8');
+  e.target.value = '';
+});
+
+async function saveFile(){
+  const name = normalizeName();
+  $('docName').value = name;
+  const blob = new Blob([editor.value], {type:'text/markdown;charset=utf-8'});
+  const file = new File([blob], name, {type:'text/markdown'});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file], title:name}); toast('已分享 / 保存'); return }
+    catch(err){ if(err && err.name==='AbortError') return }
+  }
+  try{
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+    toast('已导出 '+name);
+  }catch(err){ await copyText(editor.value); toast('无法直接下载，已复制内容') }
+}
+$('btnSave').onclick = saveFile;
+
+async function copyText(t){
+  try{ await navigator.clipboard.writeText(t); return true }
+  catch(e){
+    const ta = document.createElement('textarea');
+    ta.value = t; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    let ok=false;
+    try{ ok = document.execCommand('copy') }catch(_){}
+    ta.remove(); return ok;
+  }
+}
+$('btnCopy').onclick = async ()=>{
+  const ok = await copyText(editor.value);
+  toast(ok ? 'Markdown 已复制' : '复制失败');
+};
+
+let toastTimer=null;
+function toast(msg){
+  const el = $('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), 1600);
+}
+
+/* ---------- 持久化 ---------- */
+function saveSoon(){ clearTimeout(saveTimer); saveTimer = setTimeout(save, 400) }
+function save(){
+  try{
+    localStorage.setItem(STORE, JSON.stringify({
+      text: editor.value, name: $('docName').value,
+      orient: app.orient, show: app.show, ratio: app.ratio, pair: app.pair
+    }));
+    $('saveState').textContent = '已保存 ' + new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+  }catch(e){}
+}
+$('docName').addEventListener('input', saveSoon);
+$('pairOn').addEventListener('change', e=>{ app.pair = e.target.checked; saveSoon() });
+
+/* ---------- 初始化 ---------- */
+const SAMPLE = '# Markdown 编辑器\n\n左边写代码，右边实时预览。拖动中间那条线可以调整宽度，双击复位。\n\n## 常用写法\n\n**粗体**、*斜体*、~~删除线~~、`行内代码`\n\n> 引用：给自己留一句话。\n\n- 无序列表 1\n- 无序列表 2\n  - 缩进一层\n\n1. 有序列表\n2. 第二项\n\n- [x] 已完成的任务\n- [ ] 待办任务\n\n| 语法 | 效果 |\n| --- | --- |\n| `**字**` | **字** |\n\n```js\nconsole.log("代码块");\n```\n\n---\n\n顶部工具栏点一下就能插入语法；输入 `*` 会自动补成 `*|*`，再按一次变成 `**|**`。\n';
+
+(function init(){
+  let d=null;
+  try{ d = JSON.parse(localStorage.getItem(STORE)||'null') }catch(e){}
+  if(d){
+    app.orient = d.orient||'row';
+    app.show = d.show||'both';
+    app.ratio = (typeof d.ratio==='number')?d.ratio:0.5;
+    app.pair = d.pair!==false;
+    editor.value = d.text||'';
+    $('docName').value = d.name||'未命名.md';
+    $('pairOn').checked = app.pair;
+  }else{
+    editor.value = SAMPLE;
+  }
+  applyLayout();
+  renderPreview();
+})();
+</script>
+</body>
+</html>

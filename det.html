@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>矩阵计算器 · 行列式 / 逆矩阵 / 伴随阵 / 连乘</title>
+<style>
+  :root{
+    --bg:#f5f5f7; --card:#fff; --txt:#1c1c1e; --sub:#6e6e73;
+    --line:#e3e3e8; --accent:#0a84ff; --ok:#34c759; --warn:#ff9f0a; --bad:#ff453a;
+    --cell:#fafafc; --seg:#f0f0f4;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#000; --card:#1c1c1e; --txt:#f2f2f7; --sub:#9a9aa0;
+      --line:#2c2c2e; --accent:#0a84ff; --ok:#32d74b; --warn:#ff9f0a; --bad:#ff6961;
+      --cell:#2c2c2e; --seg:#2c2c2e;
+    }
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--txt); min-height:100vh;
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+    padding:calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 28px);
+    max-width:780px; margin:0 auto;
+  }
+  h1{font-size:20px;font-weight:650;margin:0 0 2px;letter-spacing:-.2px}
+  .sub{color:var(--sub);font-size:13px;margin-bottom:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+  .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .row.between{justify-content:space-between}
+  .label{font-size:13px;color:var(--sub);font-weight:550}
+  .nbox{display:flex;align-items:center;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:var(--cell)}
+  .nbox button{width:40px;height:38px;border:0;background:transparent;color:var(--accent);font-size:20px;font-weight:500;line-height:1;cursor:pointer}
+  .nbox button:active{background:rgba(128,128,128,.16)}
+  .nbox .val{min-width:44px;text-align:center;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+  .nbox.sm button{width:30px;height:30px;font-size:17px}
+  .nbox.sm .val{min-width:30px;font-size:15px;font-weight:600}
+  button.btn{border:0;border-radius:11px;padding:9px 15px;font-size:15px;font-weight:600;background:var(--cell);color:var(--txt);cursor:pointer;font-family:inherit}
+  button.btn:active{opacity:.65}
+  button.btn.primary{background:var(--accent);color:#fff}
+  button.btn.ghost{background:transparent;color:var(--accent);padding:9px 10px}
+  .gridwrap{overflow-x:auto;padding:4px 0 6px;-webkit-overflow-scrolling:touch}
+  .grid{display:grid;gap:7px;margin:0 auto;width:max-content;--cw:60px}
+  .cell{width:var(--cw);height:46px;text-align:center;font-size:16px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+        background:var(--cell);border:1px solid var(--line);border-radius:10px;color:var(--txt);padding:0 4px;outline:none}
+  .cell:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.18)}
+  textarea{width:100%;min-height:74px;resize:vertical;border:1px solid var(--line);border-radius:11px;background:var(--cell);
+           color:var(--txt);padding:10px;font:14px/1.45 ui-monospace,Menlo,monospace;outline:none}
+  textarea:focus{border-color:var(--accent)}
+  #resultCard{display:none}
+  .seg{display:flex;gap:3px;background:var(--seg);border-radius:12px;padding:3px;margin-bottom:14px}
+  .seg button{flex:1;border:0;background:transparent;color:var(--sub);font-size:13.5px;font-weight:600;padding:9px 3px;border-radius:9px;cursor:pointer;font-family:inherit}
+  .seg button.on{background:var(--card);color:var(--txt);box-shadow:0 1px 4px rgba(0,0,0,.14)}
+  .seg.mode{margin-bottom:14px}
+  .pane{min-height:40px}
+  .detval{font-family:ui-monospace,Menlo,monospace;font-size:27px;font-weight:600;letter-spacing:-.5px;word-break:break-all;margin:2px 0 4px}
+  .detdec{font-size:14px;color:var(--sub);font-family:ui-monospace,Menlo,monospace;word-break:break-all}
+  .cap{font-size:13px;color:var(--sub);font-weight:550;margin-bottom:6px}
+  .badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;margin-left:8px;vertical-align:middle}
+  .badge.ok{background:rgba(52,199,89,.15);color:var(--ok)}
+  .badge.warn{background:rgba(255,159,10,.16);color:var(--warn)}
+  .err{color:var(--bad);font-size:14px;font-weight:550}
+  .mbox{overflow-x:auto;padding:4px 0;-webkit-overflow-scrolling:touch}
+  .brk{display:inline-block;border-left:2px solid var(--sub);border-right:2px solid var(--sub);border-radius:2px;padding:1px 2px}
+  .mtx{border-collapse:collapse;font-family:ui-monospace,Menlo,monospace;font-size:14px}
+  .mtx td{padding:5px 10px;text-align:center;white-space:nowrap}
+  .mtx td.sep{border-right:1px solid var(--line)}
+  .mtx tr.cur td{background:rgba(10,132,255,.09)}
+  .mtx td.zero{color:var(--sub);opacity:.5}
+  details{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+  summary{cursor:pointer;color:var(--accent);font-size:14px;font-weight:600;outline:none}
+  .step{margin:12px 0 0;padding-left:10px;border-left:2px solid var(--line)}
+  .step .scap{font-size:13px;color:var(--sub);margin-bottom:6px}
+  .step .scap b{color:var(--txt);font-weight:600}
+  .step .ops{font-size:12.5px;color:var(--sub);font-family:ui-monospace,Menlo,monospace;margin-top:5px;line-height:1.7}
+  .hint{font-size:12px;color:var(--sub);margin-top:8px;line-height:1.45}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:var(--cell);padding:1px 5px;border-radius:5px}
+  .chk{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--sub);margin-left:auto}
+  .chk input{width:18px;height:18px;accent-color:var(--accent)}
+  /* 连乘 */
+  .matblock{border:1px solid var(--line);border-radius:13px;padding:10px;margin-top:10px;background:linear-gradient(180deg,rgba(128,128,128,.04),transparent)}
+  .mathead{margin-bottom:2px}
+  .mname{font-size:15px;font-weight:650;font-family:ui-monospace,Menlo,monospace}
+  .mname sub{font-size:11px;font-weight:600}
+  .dims{display:flex;align-items:center;gap:6px}
+  .dimlab{font-size:11px;color:var(--sub)}
+  .times{text-align:center;color:var(--sub);font-size:18px;font-weight:600;line-height:1;margin:2px 0 -4px}
+  .chain{display:flex;align-items:center;gap:4px;overflow-x:auto;padding:10px 2px;-webkit-overflow-scrolling:touch}
+  .chain .matblock{flex:0 0 auto;margin-top:0;padding:5px}
+  .chain .mathead{justify-content:center;margin:0 0 2px}
+  .chain .times,.chain .eq{font-size:18px;font-weight:600;color:var(--sub);flex:0 0 auto;line-height:1}
+  .chain .dimsrow{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+  .chain .dimrow{display:flex;align-items:center;justify-content:space-between;gap:4px}
+  .chain .nbox.sm button{width:26px;height:26px;font-size:16px}
+  .chain .nbox.sm .val{min-width:26px;font-size:13px}
+  .chain .matblock{padding:7px}
+  .chain .chainres{flex:0 0 auto}
+  .chain .chainres .mtx td{padding:3px 5px;font-size:12px}
+  .chain .grid{gap:6px}
+  .grid.compact .cell{height:40px;font-size:13.5px}
+  .seg.mini{display:inline-flex;flex:0 0 auto;margin-bottom:0;padding:2px;border-radius:10px}
+  .seg.mini button{padding:6px 12px;font-size:12.5px;border-radius:8px}
+  .dimsline{font-size:12.5px;font-family:ui-monospace,Menlo,monospace;color:var(--sub);margin-top:10px;line-height:1.7;word-break:break-word}
+  .dimsline .ok{color:var(--ok)}
+  .dimsline .bad{color:var(--bad);font-weight:600}
+</style>
+<link rel="apple-touch-icon" href="icon-det.png">
+<meta name="apple-mobile-web-app-title" content="矩阵计算器">
+<meta name="theme-color" content="#34c759">
+</head>
+<body>
+  <h1>矩阵计算器</h1>
+  <div class="sub">行列式 · 逆矩阵 · 伴随阵 · 矩阵连乘（精确分数运算）</div>
+
+  <div class="seg mode" id="modeSeg">
+    <button data-mode="single" class="on">单矩阵</button>
+    <button data-mode="mul">矩阵连乘</button>
+  </div>
+
+  <!-- ============ 单矩阵 ============ -->
+  <div class="card" id="singleCard">
+    <div class="row between">
+      <span class="label">阶数 n</span>
+      <div class="nbox">
+        <button id="minus" aria-label="减少">−</button>
+        <span class="val" id="nval">3</span>
+        <button id="plus" aria-label="增加">+</button>
+      </div>
+    </div>
+    <div id="singleGrid"></div>
+    <div class="row" style="margin-top:4px">
+      <button class="btn primary" id="calcSingle">计算</button>
+      <button class="btn" id="zeroSingle">清零</button>
+      <button class="btn" id="identSingle">单位阵</button>
+      <button class="btn" id="randSingle">随机</button>
+    </div>
+    <div class="hint">单元格支持 <code>3</code>、<code>-2.5</code>、<code>1/3</code>、<code>(1+2)/3</code>；留空按 0 计。</div>
+  </div>
+
+  <!-- ============ 矩阵连乘 ============ -->
+  <div class="card" id="mulCard" hidden>
+    <div class="row between">
+      <span class="label">相乘矩阵个数</span>
+      <div class="nbox">
+        <button id="kminus" aria-label="减少">−</button>
+        <span class="val" id="kval">2</span>
+        <button id="kplus" aria-label="增加">+</button>
+      </div>
+    </div>
+    <div class="row between" style="margin-top:10px">
+      <span class="label">排列</span>
+      <div class="seg mini" id="layoutSeg">
+        <button data-layout="h" class="on">并排</button>
+        <button data-layout="v">竖排</button>
+      </div>
+    </div>
+    <div id="mulMats"></div>
+    <div class="dimsline" id="dimsLine"></div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn primary" id="calcMul">计算 A₁·A₂·…</button>
+      <button class="btn" id="randMul">随机</button>
+      <button class="btn" id="clearMul">清零</button>
+    </div>
+    <div class="hint">改「行」时「列」自动跟随（新矩阵默认方阵，输 3 行就是 3 阶）；也可点「列」单独改成长方阵。
+      连乘要求前一个的列数 = 后一个的行数，页面会实时提示。并排视图按数学写法排成 A×B=C，左右滑动可看全。</div>
+  </div>
+
+  <!-- ============ 整块粘贴 ============ -->
+  <div class="card" id="pasteCard">
+    <div class="row between" style="margin-bottom:8px">
+      <span class="label">整块粘贴（可选）</span>
+      <button class="btn ghost" id="fill">填入表格</button>
+    </div>
+    <textarea id="bulk" placeholder="按行粘贴，数字之间用空格 / 制表符 / 逗号分隔"></textarea>
+    <div class="hint" id="pasteHint">连乘模式下用空行分隔各个矩阵，会自动识别行列数。</div>
+  </div>
+
+  <!-- ============ 结果 ============ -->
+  <div class="card" id="resultCard">
+    <div class="seg" id="seg">
+      <button data-tab="det" class="on">行列式</button>
+      <button data-tab="inv">逆矩阵 A⁻¹</button>
+      <button data-tab="adj">伴随阵 A*</button>
+    </div>
+    <div class="pane" id="pane"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn ghost" id="copy">复制结果</button>
+      <label class="chk"><input type="checkbox" id="decMode"> 小数显示</label>
+    </div>
+    <button class="btn" id="toSingle" hidden style="margin-top:10px;width:100%">用这个结果继续算 det / 逆矩阵 →</button>
+    <details id="stepsBox">
+      <summary>显示计算过程</summary>
+      <div id="steps"></div>
+    </details>
+  </div>
+
+<script>
+/* ================= 精确分数（BigInt） ================= */
+function gcd(a,b){a=a<0n?-a:a;b=b<0n?-b:b;while(b){const t=a%b;a=b;b=t}return a||1n}
+
+class F{
+  constructor(n,d=1n){
+    if(d===0n) throw new Error('分母不能为 0');
+    if(d<0n){n=-n;d=-d}
+    const g=gcd(n,d); this.n=n/g; this.d=d/g;
+  }
+  add(o){return new F(this.n*o.d+o.n*this.d, this.d*o.d)}
+  sub(o){return new F(this.n*o.d-o.n*this.d, this.d*o.d)}
+  mul(o){return new F(this.n*o.n, this.d*o.d)}
+  div(o){if(o.n===0n) throw new Error('除以 0'); return new F(this.n*o.d, this.d*o.n)}
+  neg(){return new F(-this.n, this.d)}
+  isZero(){return this.n===0n}
+  isOne(){return this.n===1n && this.d===1n}
+  pow(k){let r=new F(1n); for(let i=0;i<k;i++) r=r.mul(this); return r}
+  toString(){return this.d===1n ? this.n.toString() : this.n + '/' + this.d}
+  toDecimal(dp=10){
+    const neg=this.n<0n, a=neg?-this.n:this.n;
+    const ip=a/this.d; let rem=a%this.d, frac='';
+    for(let k=0;k<dp && rem!==0n;k++){ rem*=10n; frac+=(rem/this.d).toString(); rem%=this.d }
+    return (neg?'-':'')+ip.toString()+(frac?'.'+frac:'');
+  }
+}
+const F0=()=>new F(0n), F1=()=>new F(1n);
+
+/* ================= 单元格解析：+ - * / ( ) 与整数/小数 ================= */
+function evalExpr(src){
+  const s=String(src).replace(/\s+/g,'').replace(/×/g,'*').replace(/÷/g,'/');
+  let i=0;
+  const peek=()=>s[i];
+  function expr(){
+    let v=term();
+    while(peek()==='+'||peek()==='-'){const op=s[i++]; const r=term(); v= op==='+'? v.add(r) : v.sub(r)}
+    return v;
+  }
+  function term(){
+    let v=factor();
+    while(peek()==='*'||peek()==='/'){const op=s[i++]; const r=factor(); v= op==='*'? v.mul(r) : v.div(r)}
+    return v;
+  }
+  function factor(){
+    if(peek()==='+'){i++;return factor()}
+    if(peek()==='-'){i++;return factor().neg()}
+    if(peek()==='('){i++; const v=expr(); if(peek()!==')') throw new Error('缺少右括号'); i++; return v}
+    return number();
+  }
+  function number(){
+    const st=i;
+    while(i<s.length && /[0-9.]/.test(s[i])) i++;
+    if(i===st) throw new Error('无法解析「'+src+'」');
+    const t=s.slice(st,i);
+    if(t==='.' || (t.match(/\./g)||[]).length>1) throw new Error('数字格式错误：'+t);
+    if(t.includes('.')){
+      const p=t.split('.'); const a=p[0]||'0', b=p[1]||'';
+      return new F(BigInt(a+b||'0'), 10n**BigInt(b.length));
+    }
+    return new F(BigInt(t));
+  }
+  const v=expr();
+  if(i!==s.length) throw new Error('多余字符：'+s.slice(i));
+  return v;
+}
+
+/* ================= 矩阵运算 ================= */
+function detValue(A){
+  const n=A.length;
+  if(n===0) return F1();
+  const M=A.map(r=>r.slice());
+  let sign=1n;
+  for(let c=0;c<n;c++){
+    let p=-1;
+    for(let r=c;r<n;r++){ if(!M[r][c].isZero()){p=r;break} }
+    if(p<0) return F0();
+    if(p!==c){ const t=M[p]; M[p]=M[c]; M[c]=t; sign=-sign }
+    const piv=M[c][c];
+    for(let r=c+1;r<n;r++){
+      if(M[r][c].isZero()) continue;
+      const f=M[r][c].div(piv);
+      for(let k=c;k<n;k++) M[r][k]=M[r][k].sub(f.mul(M[c][k]));
+    }
+  }
+  let d=new F(sign);
+  for(let i=0;i<n;i++) d=d.mul(M[i][i]);
+  return d;
+}
+
+function detWithSteps(A){
+  const n=A.length;
+  const M=A.map(r=>r.slice());
+  const steps=[]; let sign=1n;
+  for(let c=0;c<n;c++){
+    let p=-1;
+    for(let r=c;r<n;r++){ if(!M[r][c].isZero()){p=r;break} }
+    if(p<0) return {value:F0(), steps, singular:true, n};
+    let note='';
+    if(p!==c){ const t=M[p]; M[p]=M[c]; M[c]=t; sign=-sign; note='交换第 '+(c+1)+' 行与第 '+(p+1)+' 行（det 变号）' }
+    const piv=M[c][c]; const ops=[];
+    for(let r=c+1;r<n;r++){
+      if(M[r][c].isZero()) continue;
+      const f=M[r][c].div(piv);
+      for(let k=c;k<n;k++) M[r][k]=M[r][k].sub(f.mul(M[c][k]));
+      ops.push('R'+(r+1)+' ← R'+(r+1)+' − ('+f.toString()+')·R'+(c+1));
+    }
+    steps.push({col:c, pivot:'a'+(c+1)+(c+1)+' = '+piv.toString(), note, ops, row:c,
+                matrix:M.map(row=>row.map(x=>x.toString()))});
+  }
+  let d=new F(sign); const diag=[];
+  for(let i=0;i<n;i++){ d=d.mul(M[i][i]); diag.push(M[i][i].toString()) }
+  return {value:d, steps, singular:false, n, sign, diag};
+}
+
+function inverseWithSteps(A){
+  const n=A.length;
+  const M=A.map((r,i)=>r.concat(Array.from({length:n},(_,j)=> i===j ? F1() : F0())));
+  const steps=[];
+  for(let c=0;c<n;c++){
+    let p=-1;
+    for(let r=c;r<n;r++){ if(!M[r][c].isZero()){p=r;break} }
+    if(p<0) return {ok:false, steps};
+    let notes=[];
+    if(p!==c){ const t=M[p]; M[p]=M[c]; M[c]=t; notes.push('交换第 '+(c+1)+' 行 ↔ 第 '+(p+1)+' 行') }
+    const piv=M[c][c];
+    if(!piv.isOne()){ for(let k=0;k<2*n;k++) M[c][k]=M[c][k].div(piv); notes.push('R'+(c+1)+' ← R'+(c+1)+' ÷ ('+piv.toString()+')') }
+    const ops=[];
+    for(let r=0;r<n;r++){
+      if(r===c || M[r][c].isZero()) continue;
+      const f=M[r][c];
+      for(let k=0;k<2*n;k++) M[r][k]=M[r][k].sub(f.mul(M[c][k]));
+      ops.push('R'+(r+1)+' ← R'+(r+1)+' − ('+f.toString()+')·R'+(c+1));
+    }
+    steps.push({col:c, notes, ops, row:c, snap:M.map(row=>row.map(x=>x.toString()))});
+  }
+  return {ok:true, inv:M.map(row=>row.slice(n)), steps};
+}
+
+/* 伴随阵：adj(A)_ij = C_ji = (-1)^(i+j)·M_ji；可逆时用 det·A⁻¹ 加速 */
+function adjugate(A, det, inv){
+  const n=A.length;
+  if(n===1) return [[F1()]];
+  if(det && !det.isZero() && inv){
+    const out=[];
+    for(let i=0;i<n;i++){ const row=[]; for(let j=0;j<n;j++) row.push(det.mul(inv[i][j])); out.push(row) }
+    return out;
+  }
+  const out=[];
+  for(let i=0;i<n;i++){
+    const row=[];
+    for(let j=0;j<n;j++){
+      const m=[];
+      for(let r=0;r<n;r++){
+        if(r===j) continue;
+        const rr=[];
+        for(let c=0;c<n;c++){ if(c===i) continue; rr.push(A[r][c]) }
+        m.push(rr);
+      }
+      const cof=detValue(m);
+      row.push(((i+j)%2===0) ? cof : cof.neg());
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+/* 矩阵乘法：A(m×k) · B(k×n) */
+function matmul(A,B){
+  const m=A.length, k=B.length, n=B[0].length, out=[];
+  for(let i=0;i<m;i++){
+    const row=[];
+    for(let j=0;j<n;j++){
+      let s=F0();
+      for(let t=0;t<k;t++) s=s.add(A[i][t].mul(B[t][j]));
+      row.push(s);
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+/* 连乘：从左往右依次相乘，返回中间结果 */
+function mulChain(mats){
+  let cur=mats[0].A, rows=mats[0].r, cols=mats[0].c;
+  const steps=[];
+  for(let i=1;i<mats.length;i++){
+    if(mats[i].r!==cols) return {ok:false, badAt:i, expect:mats[i].r, need:cols, steps};
+    const next=matmul(cur, mats[i].A);
+    steps.push({idx:i, A:cur, B:mats[i].A, res:next, rows:rows, cols:mats[i].c});
+    cur=next; cols=mats[i].c;
+  }
+  return {ok:true, res:cur, rows, cols, steps};
+}
+
+/* 逐元素展开（用于展示过程）：C_ij = Σ A_ik·B_kj */
+function mulTerms(A,B){
+  const m=A.length, k=B.length, n=B[0].length;
+  const out=[];
+  for(let i=0;i<m;i++){
+    for(let j=0;j<n;j++){
+      const terms=[];
+      for(let t=0;t<k;t++) terms.push([A[i][t],B[t][j]]);
+      out.push({i,j,terms});
+    }
+  }
+  return out;
+}
+
+/* ================= 状态 ================= */
+const $=id=>document.getElementById(id);
+const STORE='matcalc.v3';
+const clampN=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+
+const app={
+  mode:'single',
+  tab:'det',
+  single:{n:3, vals:null, inputs:null},
+  mul:{k:2, mats:[], layout:'h'},
+  state:null
+};
+
+/* ================= 通用：网格 ================= */
+function makeGrid(rows, cols, values, opt){
+  opt=opt||{};
+  const wrap=document.createElement('div'); wrap.className=opt.noScroll?'':'gridwrap';
+  const g=document.createElement('div'); g.className='grid';
+  let w = cols>=9?50 : cols>=7?56 : (opt.compact?46:60);
+  g.style.setProperty('--cw', w+'px');
+  if(opt.compact) g.classList.add('compact');
+  g.style.gridTemplateColumns='repeat('+cols+', '+w+'px)';
+  const inputs=[];
+  for(let r=0;r<rows;r++){
+    const row=[];
+    for(let c=0;c<cols;c++){
+      const el=document.createElement('input');
+      el.className='cell'; el.type='text';
+      el.setAttribute('inputmode','text');
+      el.setAttribute('autocapitalize','off');
+      el.setAttribute('autocorrect','off');
+      el.setAttribute('spellcheck','false');
+      el.setAttribute('enterkeyhint','next');
+      el.placeholder='0';
+      if(values && values[r] && values[r][c]!==undefined) el.value=values[r][c];
+      el.addEventListener('focus',()=>setTimeout(()=>el.select(),0));
+      g.appendChild(el); row.push(el);
+    }
+    inputs.push(row);
+  }
+  wrap.appendChild(g);
+  return {el:wrap, inputs};
+}
+function wireEnter(inputs, onDone){
+  const flat=inputs.flat();
+  flat.forEach((el,i)=>{
+    el.addEventListener('keydown',e=>{
+      if(e.key!=='Enter') return;
+      e.preventDefault();
+      if(i+1<flat.length) flat[i+1].focus();
+      else if(onDone) onDone();
+    });
+  });
+}
+const readGrid=inputs=>inputs.map(r=>r.map(el=>el.value));
+
+function parseGrid(inputs, name){
+  const A=[];
+  for(let r=0;r<inputs.length;r++){
+    const row=[];
+    for(let c=0;c<inputs[r].length;c++){
+      const raw=inputs[r][c].value.trim();
+      if(raw===''){ row.push(F0()); continue }
+      try{ row.push(evalExpr(raw)) }
+      catch(err){ throw new Error((name?name+' ':'')+'第 '+(r+1)+' 行第 '+(c+1)+' 列：'+err.message) }
+    }
+    A.push(row);
+  }
+  return A;
+}
+
+/* ================= 渲染工具 ================= */
+function fmt(x){
+  if($('decMode').checked) return x.toDecimal(6).replace(/(\.\d*?)0+$/,'$1').replace(/\.$/,'');
+  return x.toString();
+}
+function matrixHTML(m, opt={}){
+  const split=opt.split||0, hl=opt.hl;
+  let h='<div class="mbox"><span class="brk"><table class="mtx">';
+  for(let r=0;r<m.length;r++){
+    h+='<tr'+(r===hl?' class="cur"':'')+'>';
+    for(let c=0;c<m[r].length;c++){
+      const raw=m[r][c];
+      const v=(typeof raw==='string')?raw:fmt(raw);
+      h+='<td class="'+(v==='0'?'zero ':'')+((split&&c===split-1)?'sep':'')+'">'+v+'</td>';
+    }
+    h+='</tr>';
+  }
+  return h+'</table></span></div>';
+}
+
+/* ================= 单矩阵模式 ================= */
+/* values 传 undefined = 沿用当前格子里已有的数字；传 null = 全部清空；传数组 = 用这批值 */
+function renderSingle(values){
+  const s=app.single;
+  $('nval').textContent=s.n;
+  const keep = (values===undefined) ? (s.inputs?readGrid(s.inputs):s.vals) : values;
+  const g=makeGrid(s.n, s.n, keep);
+  $('singleGrid').innerHTML='';
+  $('singleGrid').appendChild(g.el);
+  s.inputs=g.inputs;
+  s.vals=keep;
+  wireEnter(g.inputs, ()=>computeSingle());
+  save();
+}
+
+function computeSingle(){
+  try{
+    const A=parseGrid(app.single.inputs);
+    const detRes=detWithSteps(A);
+    const invRes=inverseWithSteps(A);
+    app.state={kind:'single', A, detRes, invRes, adj:undefined};
+    app.mode='single';
+    $('seg').style.display='';
+    $('toSingle').hidden=true;
+    $('resultCard').style.display='block';
+    render();
+    $('resultCard').scrollIntoView({behavior:'smooth',block:'start'});
+    save();
+  }catch(err){ showError(err.message) }
+}
+
+function showError(msg){
+  $('resultCard').style.display='block';
+  $('seg').style.display = app.mode==='mul' ? 'none' : '';
+  $('pane').innerHTML='<div class="err">'+msg+'</div>';
+  $('steps').innerHTML='';
+  $('resultCard').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function getAdj(){
+  const st=app.state;
+  if(st.adj===undefined) st.adj=adjugate(st.A, st.detRes.value, st.invRes.ok?st.invRes.inv:null);
+  return st.adj;
+}
+
+function render(){
+  if(!app.state) return;
+  if(app.state.kind==='mul'){ renderMulResult(); return; }
+  const {A, detRes, invRes}=app.state;
+  const det=detRes.value, n=A.length;
+  let h='';
+  if(app.tab==='det'){
+    h+='<div class="cap">det(A)</div>';
+    h+='<div class="detval">'+det.toString()+(det.isZero()?'<span class="badge warn">奇异矩阵</span>':'')+'</div>';
+    let dec='';
+    if(det.d!==1n) dec='≈ '+det.toDecimal(12).replace(/0+$/,'').replace(/\.$/,'');
+    else if((det.n<0n?-det.n:det.n)>999999n) dec='整数，共 '+det.n.toString().replace('-','').length+' 位';
+    if(dec) h+='<div class="detdec">'+dec+'</div>';
+    if(!det.isZero()) h+='<div class="hint">det ≠ 0 → A 可逆；det(A⁻¹) = 1/det(A)，det(A*) = det(A)^(n−1) = '+det.pow(n-1).toString()+'</div>';
+  }
+  if(app.tab==='inv'){
+    if(!invRes.ok){
+      h+='<div class="err">A 不可逆（det(A) = 0，奇异矩阵）</div>';
+      h+='<div class="hint">判据：高斯-约当消元时某一列找不到非零主元。</div>';
+    }else{
+      h+='<div class="cap">A⁻¹（'+n+'×'+n+'）</div>'+matrixHTML(invRes.inv);
+      h+='<div class="hint">校验：A·A⁻¹ = I；det(A⁻¹) = 1/det(A) = '+(new F(1n).div(det)).toString()+'</div>';
+    }
+  }
+  if(app.tab==='adj'){
+    const adj=getAdj();
+    h+='<div class="cap">A*（伴随阵，'+(det.isZero()?'不可逆，按余子式直接展开':'由 det(A)·A⁻¹ 得到')+'）</div>';
+    h+=matrixHTML(adj);
+    h+='<div class="hint">A·A* = A*·A = det(A)·I = '+(det.isZero()?'0（零矩阵）':(det.isOne()?'I':det.toString()+'·I'))+'</div>';
+  }
+  $('pane').innerHTML=h;
+  renderSteps();
+}
+
+function renderSteps(){
+  if(!$('stepsBox').open || !app.state) return;
+  const st=app.state;
+  let s='';
+  if(st.kind==='mul'){ s=mulStepsHTML(); $('steps').innerHTML=s; return }
+  const {A, detRes, invRes}=st;
+  if(app.tab==='det'){
+    if(A.length<=8){
+      detRes.steps.forEach((x,i)=>{
+        s+='<div class="step"><div class="scap">第 '+(i+1)+' 步：第 '+(x.col+1)+' 列，主元 <b>'+x.pivot+'</b>'
+          +(x.note?'　·　'+x.note:'')+'</div>'+matrixHTML(x.matrix,{hl:x.row})
+          +(x.ops.length?'<div class="ops">'+x.ops.join('<br>')+'</div>':'')+'</div>';
+      });
+      if(!detRes.singular){
+        s+='<div class="step"><div class="scap">上三角对角线乘积</div><div class="ops">'
+          +detRes.diag.join(' × ')+' = '+detRes.value.toString()+(detRes.sign<0n?'　（已含行交换的 −1）':'')+'</div></div>';
+      }else{
+        s+='<div class="step"><div class="scap">某列全为 0 → 奇异，det = 0</div></div>';
+      }
+    }else s='<div class="hint">阶数 > 8，过程已省略（结果仍然精确）。</div>';
+  }
+  if(app.tab==='inv'){
+    if(!invRes.ok) s='<div class="hint">消元中出现整列为 0 的主元列 → 不可逆。</div>';
+    else if(A.length<=8){
+      s+='<div class="hint">对增广矩阵 [A | I] 做初等行变换，左边化为 I，右边即 A⁻¹。</div>';
+      invRes.steps.forEach((x,i)=>{
+        s+='<div class="step"><div class="scap">第 '+(i+1)+' 步：第 '+(x.col+1)+' 列'
+          +(x.notes.length?'　·　'+x.notes.join('；'):'')+'</div>'
+          +matrixHTML(x.snap,{hl:x.row, split:A.length})
+          +(x.ops.length?'<div class="ops">'+x.ops.join('<br>')+'</div>':'')+'</div>';
+      });
+    }else s='<div class="hint">阶数 > 8，过程已省略。</div>';
+  }
+  if(app.tab==='adj'){
+    s='<div class="hint">定义：A*<sub>ij</sub> = C<sub>ji</sub> = (−1)<sup>i+j</sup>·M<sub>ji</sub>（去掉第 j 行第 i 列的余子式）。<br>'
+     +'关系：A·A* = A*·A = det(A)·I；A 可逆时 A* = det(A)·A⁻¹。</div>';
+  }
+  $('steps').innerHTML=s;
+}
+
+/* ================= 矩阵连乘模式 ================= */
+function lab(t){ const s=document.createElement('span'); s.className='dimlab'; s.textContent=t; return s }
+function stepper(v,dec,inc){
+  const box=document.createElement('div'); box.className='nbox sm';
+  const b1=document.createElement('button'); b1.textContent='−'; b1.setAttribute('aria-label','减少'); b1.onclick=dec;
+  const val=document.createElement('span'); val.className='val'; val.textContent=v;
+  const b2=document.createElement('button'); b2.textContent='+'; b2.setAttribute('aria-label','增加'); b2.onclick=inc;
+  box.append(b1,val,b2); return box;
+}
+
+function newMat(r,c,vals){
+  return {r:r||3, c:c||3, linked:(r||3)===(c||3), vals:vals||null, inputs:null};
+}
+function ensureMats(){
+  const M=app.mul;
+  while(M.mats.length<M.k){
+    const prev=M.mats[M.mats.length-1];
+    const d=prev?prev.c:3;
+    M.mats.push(newMat(d,d));
+  }
+  if(M.mats.length>M.k) M.mats.length=M.k;
+}
+
+function renderMul(){
+  const M=app.mul;
+  ensureMats();
+  const horizontal = M.layout!=='v';
+  $('kval').textContent=M.k;
+  Array.from($('layoutSeg').children).forEach(b=>b.classList.toggle('on', b.dataset.layout===(horizontal?'h':'v')));
+
+  const host=$('mulMats');
+  host.className = horizontal ? 'chain' : '';
+  host.innerHTML='';
+
+  M.mats.forEach((mat,i)=>{
+    if(mat.inputs) mat.vals=readGrid(mat.inputs);
+
+    const mkDims=()=>{
+      const d=document.createElement('div'); d.className='dims';
+      d.append(
+        lab('行'),
+        stepper(mat.r, ()=>setDim(i,'r',mat.r-1), ()=>setDim(i,'r',mat.r+1)),
+        lab('列'),
+        stepper(mat.c, ()=>setDim(i,'c',mat.c-1), ()=>setDim(i,'c',mat.c+1))
+      );
+      return d;
+    };
+    const nm=document.createElement('span'); nm.className='mname';
+    nm.innerHTML='A<sub>'+(i+1)+'</sub>';
+
+    const block=document.createElement('div'); block.className='matblock';
+    const head=document.createElement('div');
+    if(horizontal){
+      head.className='row mathead';
+      head.append(nm);
+      block.appendChild(head);
+      const g=makeGrid(mat.r, mat.c, mat.vals, {compact:true, noScroll:true});
+      block.appendChild(g.el);
+      const dr=document.createElement('div'); dr.className='dimsrow';
+      const r1=document.createElement('div'); r1.className='dimrow';
+      r1.append(lab('行'), stepper(mat.r, ()=>setDim(i,'r',mat.r-1), ()=>setDim(i,'r',mat.r+1)));
+      const r2=document.createElement('div'); r2.className='dimrow';
+      r2.append(lab('列'), stepper(mat.c, ()=>setDim(i,'c',mat.c-1), ()=>setDim(i,'c',mat.c+1)));
+      dr.append(r1,r2);
+      block.appendChild(dr);
+      mat.inputs=g.inputs;
+      wireEnter(g.inputs, ()=>computeMul());
+    }else{
+      head.className='row between mathead';
+      head.append(nm, mkDims());
+      block.appendChild(head);
+      const g=makeGrid(mat.r, mat.c, mat.vals);
+      block.appendChild(g.el);
+      mat.inputs=g.inputs;
+      wireEnter(g.inputs, ()=>computeMul());
+    }
+    host.appendChild(block);
+
+    if(i<M.mats.length-1){
+      const x=document.createElement('div'); x.className='times'; x.textContent='×';
+      host.appendChild(x);
+    }
+  });
+
+  // 并排时把结果接在式子后面：A × B = C
+  if(horizontal && app.state && app.state.kind==='mul' && app.state.res.ok){
+    const eq=document.createElement('div'); eq.className='eq'; eq.textContent='=';
+    host.appendChild(eq);
+    const rb=document.createElement('div'); rb.className='chainres';
+    rb.innerHTML=matrixHTML(app.state.res.res);
+    host.appendChild(rb);
+    // 屏幕放不下就把行内结果去掉（结果卡里有同样的一份，别让式子白占宽度）
+    if(host.scrollWidth > host.clientWidth + 4){ eq.remove(); rb.remove() }
+  }
+
+  updateDims();
+  $('calcMul').textContent='计算 '+M.mats.map((_,i)=>'A'+(i+1)).join('·');
+  save();
+}
+
+function setDim(i, which, v){
+  const M=app.mul, mat=M.mats[i];
+  const oldR=mat.r, oldC=mat.c;
+  v=clampN(v,1,10);
+  if(which==='r'){ mat.r=v; if(mat.linked) mat.c=v; if(mat.r===mat.c) mat.linked=true; }
+  else { mat.c=v; mat.linked=(mat.c===mat.r); }
+  const nx=M.mats[i+1];
+  if(nx){
+    if(mat.c!==oldC && nx.r===oldC){ nx.r=mat.c; if(nx.linked) nx.c=mat.c; }
+    else if(mat.r!==oldR && nx.r===oldR){ nx.r=mat.r; if(nx.linked) nx.c=mat.r; }
+  }
+  renderMul();
+  refreshMulResult();
+}
+
+function updateDims(){
+  const M=app.mul;
+  const parts=M.mats.map((m,i)=>'A'+(i+1)+' '+m.r+'×'+m.c);
+  let bad='';
+  for(let i=1;i<M.mats.length;i++){
+    if(M.mats[i-1].c!==M.mats[i].r){
+      bad='A'+i+' 的列数 '+M.mats[i-1].c+' ≠ A'+(i+1)+' 的行数 '+M.mats[i].r;
+      break;
+    }
+  }
+  const first=M.mats[0], last=M.mats[M.mats.length-1];
+  const out=bad? '' : ' → 结果 '+(first?first.r:0)+'×'+(last?last.c:0);
+  $('dimsLine').innerHTML = parts.join(' · ')
+    + (bad ? '<br><span class="bad">✗ '+bad+'</span>' : '<br><span class="ok">✓ 可以相乘'+out+'</span>');
+}
+
+function computeMul(){
+  try{
+    const M=app.mul;
+    const mats=M.mats.map((m,i)=>({r:m.r, c:m.c, A:parseGrid(m.inputs,'A'+(i+1))}));
+    const r=mulChain(mats);
+    app.state={kind:'mul', mats, res:r};
+    $('resultCard').style.display='block';
+    $('seg').style.display='none';
+    $('toSingle').hidden=!(r.ok && r.rows===r.cols);
+    if(app.mul.layout!=='v') renderMul();
+    render();
+    $('resultCard').scrollIntoView({behavior:'smooth',block:'start'});
+    save();
+  }catch(err){ showError(err.message) }
+}
+
+function refreshMulResult(){
+  if(app.mode==='mul' && $('resultCard').style.display==='block') computeMul();
+}
+
+function renderMulResult(){
+  const st=app.state, r=st.res;
+  if(!r.ok){
+    $('pane').innerHTML='<div class="err">维度不匹配，无法相乘：A'+r.badAt+' 的列数（'+r.need
+      +'）≠ A'+(r.badAt+1)+' 的行数（'+r.expect+'）</div>'
+      +'<div class="hint">调整上面任一矩阵的「行 / 列」，让前一个的列数等于后一个的行数。</div>';
+    $('steps').innerHTML='';
+    $('toSingle').hidden=true;
+    return;
+  }
+  const chain=st.mats.map((m,i)=>'A'+(i+1)+'('+m.r+'×'+m.c+')').join(' × ');
+  let h='<div class="cap">'+chain+' = <b>'+r.rows+'×'+r.cols+'</b></div>';
+  h+=matrixHTML(r.res);
+  if(st.mats.length>2) h+='<div class="hint">共 '+(st.mats.length-1)+' 次乘法，中间结果见「显示计算过程」。</div>';
+  $('pane').innerHTML=h;
+  renderSteps();
+}
+
+function mulStepsHTML(){
+  const st=app.state;
+  if(!st || st.kind!=='mul') return '';
+  const r=st.res;
+  if(!r.ok) return '<div class="hint">维度不匹配，无法计算。</div>';
+  let s='';
+  if(r.steps.length>1){
+    s+='<div class="hint">从左往右依次相乘，每一步的中间结果：</div>';
+    r.steps.slice(0,-1).forEach((x,i)=>{
+      s+='<div class="step"><div class="scap">A1…A'+(i+2)+' = <b>'+x.res.length+'×'+x.res[0].length+'</b></div>'
+        + matrixHTML(x.res) + '</div>';
+    });
+  }
+  const last=r.steps[r.steps.length-1];
+  const rows=r.res.length, cols=r.res[0].length, inner=last?last.A[0].length:0;
+  if(last && rows*cols<=16 && inner<=6){
+    const terms=mulTerms(last.A,last.B);
+    const lines=terms.map(t=>{
+      const prod=t.terms.map(([a,b])=>'('+fmt(a)+')('+fmt(b)+')').join(' + ');
+      let sum=F0();
+      t.terms.forEach(([a,b])=>{ sum=sum.add(a.mul(b)) });
+      return 'c'+(t.i+1)+(t.j+1)+' = '+prod+' = '+fmt(sum);
+    });
+    s+='<div class="step"><div class="scap">最后一次乘法逐元素展开（'+(last.A.length+'×'+last.A[0].length)
+      +' · '+(last.B.length+'×'+last.B[0].length)+'）</div><div class="ops">'+lines.join('<br>')+'</div></div>';
+  }
+  if(st.mats.length>2) s+='<div class="step"><div class="scap">最终结果</div>'+matrixHTML(r.res)+'</div>';
+  return s;
+}
+
+/* ================= 模式切换 ================= */
+function setMode(mode){
+  app.mode=mode;
+  Array.from($('modeSeg').children).forEach(b=>b.classList.toggle('on', b.dataset.mode===mode));
+  $('singleCard').hidden = mode!=='single';
+  $('mulCard').hidden = mode!=='mul';
+  $('resultCard').style.display='none';
+  app.state=null;
+  $('seg').style.display='';
+  $('toSingle').hidden=true;
+  updatePasteHint();
+  save();
+}
+function updatePasteHint(){
+  $('pasteHint').textContent = app.mode==='mul'
+    ? '连乘模式下用空行分隔各个矩阵，会自动识别行列数。'
+    : '按行粘贴：' + app.single.n + ' 行 × ' + app.single.n + ' 列，或一次性 ' + (app.single.n*app.single.n) + ' 个数字。';
+}
+
+/* ================= 事件 ================= */
+$('modeSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b || b.dataset.mode===app.mode) return;
+  setMode(b.dataset.mode);
+});
+
+$('plus').onclick=()=>{ if(app.single.n<12){ app.single.n++; renderSingle(); if(app.state&&app.state.kind==='single') computeSingle() } };
+$('minus').onclick=()=>{ if(app.single.n>1){ app.single.n--; renderSingle(); if(app.state&&app.state.kind==='single') computeSingle() } };
+$('calcSingle').onclick=computeSingle;
+$('zeroSingle').onclick=()=>{ renderSingle(null); $('resultCard').style.display='none'; app.state=null };
+$('identSingle').onclick=()=>{
+  const n=app.single.n, v=[];
+  for(let r=0;r<n;r++){ const row=[]; for(let c=0;c<n;c++) row.push(r===c?'1':''); v.push(row) }
+  renderSingle(v); computeSingle();
+};
+$('randSingle').onclick=()=>{
+  const n=app.single.n, v=[];
+  for(let r=0;r<n;r++){ const row=[]; for(let c=0;c<n;c++) row.push(String(Math.floor(Math.random()*19)-9)); v.push(row) }
+  renderSingle(v); computeSingle();
+};
+
+$('layoutSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  app.mul.layout=b.dataset.layout;
+  renderMul();
+});
+
+$('kplus').onclick=()=>{ if(app.mul.k<5){ app.mul.k++; renderMul(); refreshMulResult() } };
+$('kminus').onclick=()=>{ if(app.mul.k>2){ app.mul.k--; renderMul(); refreshMulResult() } };
+$('calcMul').onclick=computeMul;
+$('randMul').onclick=()=>{
+  app.mul.mats.forEach(m=>{
+    const v=[];
+    for(let r=0;r<m.r;r++){ const row=[]; for(let c=0;c<m.c;c++) row.push(String(Math.floor(Math.random()*19)-9)); v.push(row) }
+    m.inputs=null; m.vals=v;
+  });
+  renderMul(); computeMul();
+};
+$('clearMul').onclick=()=>{
+  app.mul.mats.forEach(m=>{ m.inputs=null; m.vals=null });
+  renderMul();
+  $('resultCard').style.display='none'; app.state=null;
+};
+
+$('seg').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  app.tab=b.dataset.tab;
+  Array.from($('seg').children).forEach(x=>x.classList.toggle('on', x===b));
+  if(app.state) render();
+});
+$('decMode').onchange=()=>{ if(app.state) render() };
+$('stepsBox').ontoggle=()=>{ if(app.state) renderSteps() };
+$('toSingle').onclick=()=>{
+  const st=app.state;
+  if(!st || st.kind!=='mul' || !st.res.ok) return;
+  app.single.n=st.res.rows;
+  app.single.inputs=null;
+  setMode('single');
+  renderSingle(st.res.res.map(r=>r.map(x=>x.toString())));
+  computeSingle();
+};
+
+$('fill').onclick=()=>{
+  const raw=$('bulk').value.replace(/[，、]/g,',');
+  if(!raw.trim()) return;
+  if(app.mode==='single') fillSingle(raw); else fillMul(raw);
+};
+
+function fillSingle(raw){
+  const n=app.single.n;
+  const tokens=l=>l.split(/[\s,]+/).filter(Boolean);
+  const lines=raw.split(/\n+/).map(l=>l.trim()).filter(Boolean);
+  let grid=null;
+  if(lines.length===n && lines.every(l=>tokens(l).length===n)) grid=lines.map(tokens);
+  else{
+    const flat=raw.split(/[\s,\n]+/).filter(Boolean);
+    const side=Math.round(Math.sqrt(flat.length));
+    if(side*side!==flat.length || side<1){ alert('需要 n×n 个数，或正好能排成方阵的数量；当前 '+flat.length+' 个'); return }
+    if(side>12){ alert('最大 12 阶'); return }
+    app.single.n=side;
+    grid=[]; for(let r=0;r<side;r++) grid.push(flat.slice(r*side,(r+1)*side));
+  }
+  renderSingle(grid);
+  computeSingle();
+}
+
+function fillMul(raw){
+  const blocks=raw.split(/\n\s*\n/).map(b=>b.trim()).filter(Boolean);
+  if(blocks.length<2){ alert('连乘模式请用「空行」分隔各个矩阵，至少两段'); return }
+  if(blocks.length>5){ alert('最多 5 个矩阵'); return }
+  const mats=[];
+  for(const b of blocks){
+    const lines=b.split(/\n+/).map(l=>l.trim()).filter(Boolean);
+    const rows=lines.map(l=>l.split(/[\s,]+/).filter(Boolean));
+    const cols=rows[0].length;
+    if(rows.some(r=>r.length!==cols)){ alert('同一个矩阵里每行的数字个数要相同'); return }
+    if(rows.length>10||cols>10){ alert('单个矩阵最大 10×10'); return }
+    mats.push({r:rows.length, c:cols, linked:rows.length===cols, vals:rows, inputs:null});
+  }
+  app.mul.k=mats.length;
+  app.mul.mats=mats;
+  renderMul();
+  computeMul();
+}
+
+/* ================= 存档 ================= */
+function save(){
+  try{
+    const d={
+      mode:app.mode, tab:app.tab,
+      single:{n:app.single.n, vals:app.single.inputs?readGrid(app.single.inputs):app.single.vals},
+      mul:{k:app.mul.k, layout:app.mul.layout, mats:app.mul.mats.map(m=>({r:m.r,c:m.c,linked:m.linked,vals:m.inputs?readGrid(m.inputs):m.vals}))}
+    };
+    localStorage.setItem(STORE, JSON.stringify(d));
+  }catch(e){}
+}
+let saveTimer=null;
+function saveSoon(){ clearTimeout(saveTimer); saveTimer=setTimeout(save,400) }
+document.addEventListener('input', e=>{ if(e.target && e.target.classList && e.target.classList.contains('cell')) saveSoon() });
+
+function load(){
+  try{ const d=JSON.parse(localStorage.getItem(STORE)||'null'); if(d&&d.single) return d }catch(e){}
+  return null;
+}
+
+/* ================= 初始化 ================= */
+(function(){
+  const d=load();
+  if(d){
+    app.tab=d.tab||'det';
+    app.single={n:d.single.n||3, vals:d.single.vals||null, inputs:null};
+    app.mul.k=(d.mul&&d.mul.k)?d.mul.k:2;
+    app.mul.layout=(d.mul&&d.mul.layout)||'h';
+    app.mul.mats=(d.mul&&d.mul.mats?d.mul.mats:[]).map(m=>({r:m.r,c:m.c,linked:m.linked!==false,vals:m.vals||null,inputs:null}));
+    app.mode=d.mode||'single';
+  }
+  Array.from($('seg').children).forEach(b=>b.classList.toggle('on', b.dataset.tab===app.tab));
+  renderSingle();
+  renderMul();
+  setMode(app.mode);
+})();
+</script>
+</body>
+</html>
