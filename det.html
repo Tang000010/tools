@@ -57,6 +57,7 @@
   .seg.mode{margin-bottom:14px}
   .pane{min-height:40px}
   .detval{font-family:ui-monospace,Menlo,monospace;font-size:27px;font-weight:600;letter-spacing:-.5px;word-break:break-all;margin:2px 0 4px}
+  .detval.poly{font-size:22px;line-height:1.45}
   .detdec{font-size:14px;color:var(--sub);font-family:ui-monospace,Menlo,monospace;word-break:break-all}
   .cap{font-size:13px;color:var(--sub);font-weight:550;margin-bottom:6px}
   .badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;margin-left:8px;vertical-align:middle}
@@ -137,7 +138,7 @@
       <button class="btn" id="identSingle">单位阵</button>
       <button class="btn" id="randSingle">随机</button>
     </div>
-    <div class="hint">单元格支持 <code>3</code>、<code>-2.5</code>、<code>1/3</code>、<code>(1+2)/3</code>；留空按 0 计。</div>
+    <div class="hint">支持数字与未知数：<code>3</code>、<code>-2.5</code>、<code>1/3</code>、<code>(1+2)/3</code>、<code>x</code>、<code>2x</code>、<code>x^2-1</code>、<code>a-x</code>；留空按 0 计。</div>
   </div>
 
   <!-- ============ 矩阵连乘 ============ -->
@@ -225,43 +226,153 @@ class F{
 }
 const F0=()=>new F(0n), F1=()=>new F(1n);
 
-/* ================= 单元格解析：+ - * / ( ) 与整数/小数 ================= */
-function evalExpr(src){
-  const s=String(src).replace(/\s+/g,'').replace(/×/g,'*').replace(/÷/g,'/');
+/* ================= 多项式（支持未知数 x、y、a…） ================= */
+const monoKey = e => Object.keys(e).sort().map(k=>k+'^'+e[k]).join('*');
+
+class Poly{
+  constructor(m){ this.m=m }
+  static zero(){ return new Poly(new Map()) }
+  static one(){ const m=new Map(); m.set('',{e:{},c:F1()}); return new Poly(m) }
+  static fromF(f){ if(f.isZero()) return Poly.zero(); const m=new Map(); m.set('',{e:{},c:f}); return new Poly(m) }
+  static varName(name){ const e={}; e[name]=1; const m=new Map(); m.set(monoKey(e),{e,c:F1()}); return new Poly(m) }
+
+  isZero(){ return this.m.size===0 }
+  isConst(){ if(this.m.size===0) return true; if(this.m.size>1) return false; return Object.keys(this.m.values().next().value.e).length===0 }
+  constVal(){ if(!this.isConst()) return null; return this.isZero()? F0() : this.m.values().next().value.c }
+  toF(){ const c=this.constVal(); if(c===null) throw new Error('不是常数'); return c }
+
+  add(o){
+    const m=new Map();
+    for(const [k,t] of this.m) m.set(k,{e:t.e,c:t.c});
+    for(const [k,t] of o.m){
+      const cur=m.get(k);
+      if(cur){ const c=cur.c.add(t.c); if(c.isZero()) m.delete(k); else m.set(k,{e:cur.e,c}) }
+      else m.set(k,{e:t.e,c:t.c});
+    }
+    return new Poly(m);
+  }
+  sub(o){ return this.add(o.neg()) }
+  neg(){ const m=new Map(); for(const [k,t] of this.m) m.set(k,{e:t.e,c:t.c.neg()}); return new Poly(m) }
+  mul(o){
+    if(this.isZero()||o.isZero()) return Poly.zero();
+    const m=new Map();
+    for(const [ka,a] of this.m){
+      for(const [kb,b] of o.m){
+        const e={};
+        for(const k in a.e) e[k]=(e[k]||0)+a.e[k];
+        for(const k in b.e) e[k]=(e[k]||0)+b.e[k];
+        const key=monoKey(e), c=a.c.mul(b.c);
+        const cur=m.get(key);
+        if(cur){ const v=cur.c.add(c); if(v.isZero()) m.delete(key); else m.set(key,{e:cur.e,c:v}) }
+        else if(!c.isZero()) m.set(key,{e,c});
+      }
+    }
+    return new Poly(m);
+  }
+  div(o){
+    if(!o.isConst()) throw new Error('暂不支持除以含未知数的式子');
+    const c=o.toF();
+    if(c.isZero()) throw new Error('除以 0');
+    return this.scale(new F(1n).div(c));
+  }
+  scale(f){ const m=new Map(); for(const [k,t] of this.m){ const c=t.c.mul(f); if(!c.isZero()) m.set(k,{e:t.e,c}) } return new Poly(m) }
+  pow(k){
+    if(!Number.isInteger(k)||k<0) throw new Error('指数必须是非负整数');
+    let r=Poly.one();
+    for(let i=0;i<k;i++) r=r.mul(this);
+    return r;
+  }
+  powPoly(p){
+    const c=p.constVal();
+    if(c===null || c.d!==1n) throw new Error('指数必须是非负整数');
+    const k=Number(c.n);
+    if(k<0) throw new Error('指数必须是非负整数');
+    if(k>16) throw new Error('指数太大了');
+    return this.pow(k);
+  }
+  deg(){ let d=0; for(const [k,t] of this.m){ let n=0; for(const v in t.e) n+=t.e[v]; if(n>d) d=n } return d }
+  terms(){
+    const arr=[...this.m.values()];
+    arr.sort((a,b)=>{
+      const da=Object.values(a.e).reduce((x,y)=>x+y,0), db=Object.values(b.e).reduce((x,y)=>x+y,0);
+      if(da!==db) return db-da;
+      const ka=monoKey(a.e), kb=monoKey(b.e);
+      return ka<kb?-1:(ka>kb?1:0);
+    });
+    return arr;
+  }
+  toString(){
+    if(this.isZero()) return '0';
+    let out='';
+    this.terms().forEach((t,idx)=>{
+      const neg=t.c.n<0n, abs=neg?t.c.neg():t.c;
+      const vars=Object.keys(t.e).sort().map(k=>t.e[k]===1?k:k+'^'+t.e[k]).join('·');
+      let body;
+      if(vars==='') body=abs.toString();
+      else if(abs.isOne()) body=vars;
+      else body=(abs.d===1n ? abs.n.toString()+vars : abs.toString()+'·'+vars);
+      out += idx===0 ? (neg?'-':'')+body : (neg?' - ':' + ')+body;
+    });
+    return out;
+  }
+}
+
+/* ================= 单元格解析：数字 / 未知数 / 四则 / 幂 / 隐式乘法 ================= */
+function parseExpr(src){
+  const s=String(src).replace(/\s+/g,'').replace(/×/g,'*').replace(/÷/g,'/')
+                     .replace(/[−–—]/g,'-').replace(/·/g,'*');
+  if(!s) return Poly.zero();
   let i=0;
-  const peek=()=>s[i];
+  const peek=()=>s[i]||'';
+
   function expr(){
     let v=term();
-    while(peek()==='+'||peek()==='-'){const op=s[i++]; const r=term(); v= op==='+'? v.add(r) : v.sub(r)}
+    while(peek()==='+'||peek()==='-'){ const op=s[i++]; const r=term(); v = op==='+'? v.add(r) : v.sub(r) }
     return v;
   }
   function term(){
-    let v=factor();
-    while(peek()==='*'||peek()==='/'){const op=s[i++]; const r=factor(); v= op==='*'? v.mul(r) : v.div(r)}
+    let v=unary();
+    for(;;){
+      const ch=peek();
+      if(ch==='*'||ch==='/'){ i++; const r=unary(); v = ch==='*'? v.mul(r) : v.div(r); continue }
+      if(/[0-9A-Za-z(]/.test(ch)){ v=v.mul(unary()); continue }   // 2x、x(x-1) 这类隐式乘法
+      break;
+    }
     return v;
   }
-  function factor(){
-    if(peek()==='+'){i++;return factor()}
-    if(peek()==='-'){i++;return factor().neg()}
-    if(peek()==='('){i++; const v=expr(); if(peek()!==')') throw new Error('缺少右括号'); i++; return v}
-    return number();
+  function unary(){
+    if(peek()==='+'){ i++; return unary() }
+    if(peek()==='-'){ i++; return unary().neg() }
+    return power();
   }
-  function number(){
-    const st=i;
-    while(i<s.length && /[0-9.]/.test(s[i])) i++;
-    if(i===st) throw new Error('无法解析「'+src+'」');
-    const t=s.slice(st,i);
-    if(t==='.' || (t.match(/\./g)||[]).length>1) throw new Error('数字格式错误：'+t);
-    if(t.includes('.')){
-      const p=t.split('.'); const a=p[0]||'0', b=p[1]||'';
-      return new F(BigInt(a+b||'0'), 10n**BigInt(b.length));
+  function power(){
+    const base=atom();
+    if(peek()==='^'){ i++; return base.powPoly(unary()) }
+    return base;
+  }
+  function atom(){
+    const ch=peek();
+    if(ch==='('){ i++; const v=expr(); if(peek()!==')') throw new Error('缺少右括号'); i++; return v }
+    if(/[0-9.]/.test(ch)){
+      const st=i;
+      while(i<s.length && /[0-9.]/.test(s[i])) i++;
+      const t=s.slice(st,i);
+      if(t==='.'||(t.match(/\./g)||[]).length>1) throw new Error('数字格式错误：'+t);
+      if(t.includes('.')){
+        const q=t.split('.'); const a=q[0]||'0', b=q[1]||'';
+        return Poly.fromF(new F(BigInt(a+b||'0'), 10n**BigInt(b.length)));
+      }
+      return Poly.fromF(new F(BigInt(t)));
     }
-    return new F(BigInt(t));
+    if(/[A-Za-z]/.test(ch)){ i++; return Poly.varName(ch) }
+    throw new Error('无法解析「'+src+'」');
   }
+
   const v=expr();
   if(i!==s.length) throw new Error('多余字符：'+s.slice(i));
   return v;
 }
+const evalExpr = parseExpr;
 
 /* ================= 矩阵运算 ================= */
 function detValue(A){
@@ -467,13 +578,61 @@ function parseGrid(inputs, name){
     const row=[];
     for(let c=0;c<inputs[r].length;c++){
       const raw=inputs[r][c].value.trim();
-      if(raw===''){ row.push(F0()); continue }
-      try{ row.push(evalExpr(raw)) }
+      if(raw===''){ row.push(Poly.zero()); continue }
+      try{ row.push(parseExpr(raw)) }
       catch(err){ throw new Error((name?name+' ':'')+'第 '+(r+1)+' 行第 '+(c+1)+' 列：'+err.message) }
     }
     A.push(row);
   }
   return A;
+}
+
+/* ================= 符号行列式：按子集 DP 展开（O(n·2ⁿ) 次多项式乘法） ================= */
+function popcount(x){ let c=0; while(x){ c+=x&1; x>>=1 } return c }
+
+function detPoly(M){
+  const n=M.length;
+  if(n===0) return Poly.one();
+  if(n===1) return M[0][0];
+  const size=1<<n;
+  const dp=new Array(size).fill(null);
+  dp[0]=Poly.one();
+  for(let S=1;S<size;S++){
+    const k=popcount(S);              // 已用 k 行 → 本次处理第 k-1 列
+    let acc=Poly.zero();
+    for(let i=0;i<n;i++){
+      if(!((S>>i)&1)) continue;
+      const prev=dp[S^(1<<i)];
+      if(!prev || prev.isZero()) continue;
+      const pos=popcount(S & ((1<<i)-1));
+      const term=prev.mul(M[i][k-1]);
+      acc = (((pos + k - 1) & 1) ? acc.sub(term) : acc.add(term));
+    }
+    dp[S]=acc;
+  }
+  return dp[size-1];
+}
+
+function adjPoly(A){
+  const n=A.length;
+  if(n===1) return [[Poly.one()]];
+  const out=[];
+  for(let i=0;i<n;i++){
+    const row=[];
+    for(let j=0;j<n;j++){
+      const m=[];
+      for(let r=0;r<n;r++){
+        if(r===j) continue;
+        const rr=[];
+        for(let c=0;c<n;c++){ if(c===i) continue; rr.push(A[r][c]) }
+        m.push(rr);
+      }
+      const v=detPoly(m);
+      row.push(((i+j)%2===0)? v : v.neg());
+    }
+    out.push(row);
+  }
+  return out;
 }
 
 /* ================= 渲染工具 ================= */
@@ -508,15 +667,25 @@ function renderSingle(values){
   s.inputs=g.inputs;
   s.vals=keep;
   wireEnter(g.inputs, ()=>computeSingle());
+  updatePasteHint();
   save();
 }
 
 function computeSingle(){
   try{
     const A=parseGrid(app.single.inputs);
-    const detRes=detWithSteps(A);
-    const invRes=inverseWithSteps(A);
-    app.state={kind:'single', A, detRes, invRes, adj:undefined};
+    const symbolic=A.some(row=>row.some(v=>!v.isConst()));
+    if(symbolic){
+      if(A.length>8) throw new Error('含未知数时最多支持 8 阶');
+      const detP=detPoly(A);
+      const adjP=adjPoly(A);
+      app.state={kind:'single', symbolic:true, A, detP, adjP};
+    }else{
+      const M=A.map(r=>r.map(v=>v.toF()));
+      const detRes=detWithSteps(M);
+      const invRes=inverseWithSteps(M);
+      app.state={kind:'single', symbolic:false, A:M, detRes, invRes, adj:undefined};
+    }
     app.mode='single';
     $('seg').style.display='';
     $('toSingle').hidden=true;
@@ -544,6 +713,13 @@ function getAdj(){
 function render(){
   if(!app.state) return;
   if(app.state.kind==='mul'){ renderMulResult(); return; }
+  if(app.state.symbolic){
+    const box=$('decMode').parentElement;
+    if(box) box.style.display='none';
+    renderSymbolic(); return;
+  }
+  const dbox=$('decMode').parentElement;
+  if(dbox) dbox.style.display='';
   const {A, detRes, invRes}=app.state;
   const det=detRes.value, n=A.length;
   let h='';
@@ -575,11 +751,76 @@ function render(){
   renderSteps();
 }
 
+const SUBD='₀₁₂₃₄₅₆₇₈₉';
+const sub=n=>String(n).split('').map(d=>SUBD[+d]).join('');
+
+function matrixToText(m){ return m.map(r=>r.map(v=>v.toString()).join('\t')).join('\n') }
+
+function renderSymbolic(){
+  const st=app.state, A=st.A, n=A.length, det=st.detP, adj=st.adjP;
+  const adjStr=adj.map(r=>r.map(v=>v.toString()));
+  let h='';
+  if(app.tab==='det'){
+    h+='<div class="cap">det(A)　<span class="badge ok">含未知数</span></div>';
+    h+='<div class="detval poly">'+det.toString()+'</div>';
+    h+='<div class="hint">精确多项式结果'+(det.isZero()?'（恒为 0）':'，最高 '+det.deg()+' 次')+'</div>';
+  }
+  if(app.tab==='inv'){
+    if(det.isZero()){
+      h+='<div class="err">det(A) ≡ 0，A 不可逆</div>';
+    }else{
+      h+='<div class="cap">A⁻¹ = A* / det(A)</div>';
+      h+='<div class="hint">det(A) = <b>'+det.toString()+'</b></div>';
+      h+=matrixHTML(adjStr);
+      h+='<div class="hint">上面是 A*；每一项再除以 det(A) 就是 A⁻¹ 的元素。</div>';
+    }
+  }
+  if(app.tab==='adj'){
+    h+='<div class="cap">A*（伴随阵）</div>';
+    h+=matrixHTML(adjStr);
+    h+='<div class="hint">A·A* = A*·A = det(A)·I = ('+det.toString()+')·I</div>';
+  }
+  $('pane').innerHTML=h;
+  renderSteps();
+}
+
+function symbolicStepsHTML(){
+  const st=app.state, A=st.A, n=A.length, det=st.detP;
+  if(app.tab!=='det'){
+    let h='<div class="hint">A*<sub>ij</sub> = (−1)<sup>i+j</sup>·M<sub>ji</sub>：去掉第 j 行第 i 列，剩下的是 '
+      +(n-1)+' 阶行列式（多项式）。</div>';
+    if(n<=3){
+      for(let i=0;i<n;i++) for(let j=0;j<n;j++){
+        h+='<div class="ops">A*<sub>'+(i+1)+(j+1)+'</sub> = '+st.adjP[i][j].toString()+'</div>';
+      }
+    }
+    return h;
+  }
+  let s='<div class="hint">按第一行展开：det(A) = Σ(−1)<sup>1+j</sup>·a<sub>1j</sub>·M<sub>1j</sub></div>';
+  if(n<=4){
+    for(let j=0;j<n;j++){
+      const minor=[];
+      for(let r=1;r<n;r++){
+        const row=[];
+        for(let c=0;c<n;c++){ if(c===j) continue; row.push(A[r][c]) }
+        minor.push(row);
+      }
+      const md=detPoly(minor);
+      const sign=((1+(j+1))%2===0)?'+':'−';
+      s+='<div class="ops">'+sign+' a'+sub(1)+sub(j+1)+' · M'+sub(1)+sub(j+1)
+        +' = ('+A[0][j].toString()+')·('+md.toString()+')</div>';
+    }
+  }
+  s+='<div class="step"><div class="scap">展开求和</div><div class="ops">det(A) = '+det.toString()+'</div></div>';
+  return s;
+}
+
 function renderSteps(){
   if(!$('stepsBox').open || !app.state) return;
   const st=app.state;
   let s='';
   if(st.kind==='mul'){ s=mulStepsHTML(); $('steps').innerHTML=s; return }
+  if(st.symbolic){ $('steps').innerHTML=symbolicStepsHTML(); return }
   const {A, detRes, invRes}=st;
   if(app.tab==='det'){
     if(A.length<=8){
@@ -750,8 +991,11 @@ function computeMul(){
   try{
     const M=app.mul;
     const mats=M.mats.map((m,i)=>({r:m.r, c:m.c, A:parseGrid(m.inputs,'A'+(i+1))}));
-    const r=mulChain(mats);
-    app.state={kind:'mul', mats, res:r};
+    if(mats.some(m=>m.A.some(row=>row.some(v=>!v.isConst()))))
+      throw new Error('连乘暂不支持含未知数的矩阵（单矩阵模式可以算它的行列式/伴随阵）');
+    const matsF=mats.map(m=>({r:m.r, c:m.c, A:m.A.map(row=>row.map(v=>v.toF()))}));
+    const r=mulChain(matsF);
+    app.state={kind:'mul', mats:matsF, res:r};
     $('resultCard').style.display='block';
     $('seg').style.display='none';
     $('toSingle').hidden=!(r.ok && r.rows===r.cols);
@@ -885,6 +1129,35 @@ $('seg').addEventListener('click',e=>{
 });
 $('decMode').onchange=()=>{ if(app.state) render() };
 $('stepsBox').ontoggle=()=>{ if(app.state) renderSteps() };
+
+async function copyText(t){
+  try{ await navigator.clipboard.writeText(t); return true }
+  catch(e){
+    const ta=document.createElement('textarea');
+    ta.value=t; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    let ok=false; try{ ok=document.execCommand('copy') }catch(_){}
+    ta.remove(); return ok;
+  }
+}
+$('copy').onclick=async ()=>{
+  const st=app.state; if(!st) return;
+  let txt='';
+  if(st.kind==='mul'){
+    txt = st.res.ok ? ('乘积 =\n'+matrixToText(st.res.res)) : '维度不匹配，无法相乘';
+  }else if(st.symbolic){
+    txt='det(A) = '+st.detP.toString()+'\n\nA* =\n'+matrixToText(st.adjP)
+       +'\n\nA^(-1) = A* / det(A)';
+  }else{
+    txt='det(A) = '+st.detRes.value.toString()+'\n\nA^(-1) =\n'
+       +(st.invRes.ok?matrixToText(st.invRes.inv):'不存在');
+    if(app.tab==='adj') txt+='\n\nA* =\n'+matrixToText(getAdj());
+  }
+  const ok=await copyText(txt);
+  const btn=$('copy'), old=btn.textContent;
+  btn.textContent = ok?'已复制 ✓':'复制失败';
+  setTimeout(()=>{ btn.textContent=old }, 1300);
+};
 $('toSingle').onclick=()=>{
   const st=app.state;
   if(!st || st.kind!=='mul' || !st.res.ok) return;
