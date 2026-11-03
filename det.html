@@ -306,7 +306,7 @@ class Poly{
     let out='';
     this.terms().forEach((t,idx)=>{
       const neg=t.c.n<0n, abs=neg?t.c.neg():t.c;
-      const vars=Object.keys(t.e).sort().map(k=>t.e[k]===1?k:k+'^'+t.e[k]).join('·');
+      const vars=Object.keys(t.e).sort().map(k=>t.e[k]===1?k:k+'^'+t.e[k]).join('');
       let body;
       if(vars==='') body=abs.toString();
       else if(abs.isOne()) body=vars;
