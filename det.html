@@ -114,11 +114,12 @@
 </head>
 <body>
   <h1>矩阵计算器</h1>
-  <div class="sub">行列式 · 逆矩阵 · 伴随阵 · 矩阵连乘（精确分数运算）</div>
+  <div class="sub">行列式 · 逆矩阵 · 伴随阵 · 矩阵连乘 · 求秩（精确分数 / 支持未知数）</div>
 
   <div class="seg mode" id="modeSeg">
     <button data-mode="single" class="on">单矩阵</button>
-    <button data-mode="mul">矩阵连乘</button>
+    <button data-mode="mul">连乘</button>
+    <button data-mode="rank">求秩</button>
   </div>
 
   <!-- ============ 单矩阵 ============ -->
@@ -167,6 +168,21 @@
     </div>
     <div class="hint">改「行」时「列」自动跟随（新矩阵默认方阵，输 3 行就是 3 阶）；也可点「列」单独改成长方阵。
       连乘要求前一个的列数 = 后一个的行数，页面会实时提示。并排视图按数学写法排成 A×B=C，左右滑动可看全。</div>
+  </div>
+
+  <!-- ============ 矩阵的秩 ============ -->
+  <div class="card" id="rankCard" hidden>
+    <div class="row between">
+      <span class="label">矩阵大小</span>
+      <div class="dims" id="rankDims"></div>
+    </div>
+    <div id="rankGrid"></div>
+    <div class="row" style="margin-top:4px">
+      <button class="btn primary" id="calcRank">计算秩</button>
+      <button class="btn" id="randRank">随机</button>
+      <button class="btn" id="clearRank">清零</button>
+    </div>
+    <div class="hint">支持长方形矩阵（行列可不同）；改「行」时「列」自动跟随，点「列」可单独改。</div>
   </div>
 
   <!-- ============ 整块粘贴 ============ -->
@@ -526,6 +542,7 @@ const app={
   tab:'det',
   single:{n:3, vals:null, inputs:null},
   mul:{k:2, mats:[], layout:'h'},
+  rank:{r:3, c:3, linked:true, vals:null, inputs:null},
   state:null
 };
 
@@ -713,6 +730,7 @@ function getAdj(){
 function render(){
   if(!app.state) return;
   if(app.state.kind==='mul'){ renderMulResult(); return; }
+  if(app.state.kind==='rank'){ renderRankResult(); return; }
   if(app.state.symbolic){
     const box=$('decMode').parentElement;
     if(box) box.style.display='none';
@@ -820,6 +838,7 @@ function renderSteps(){
   const st=app.state;
   let s='';
   if(st.kind==='mul'){ s=mulStepsHTML(); $('steps').innerHTML=s; return }
+  if(st.kind==='rank'){ $('steps').innerHTML=rankStepsHTML(); return }
   if(st.symbolic){ $('steps').innerHTML=symbolicStepsHTML(); return }
   const {A, detRes, invRes}=st;
   if(app.tab==='det'){
@@ -1058,12 +1077,122 @@ function mulStepsHTML(){
   return s;
 }
 
+/* ================= 矩阵的秩 ================= */
+function rankCalc(A){
+  const m=A.length, n=A[0].length;
+  const M=A.map(r=>r.slice());
+  const steps=[], pivots=[];
+  let r=0;
+  for(let c=0;c<n && r<m;c++){
+    let p=-1;
+    for(let i=r;i<m;i++){ if(!M[i][c].isZero()){p=i;break} }
+    if(p<0) continue;
+    const notes=[];
+    if(p!==r){ const t=M[p]; M[p]=M[r]; M[r]=t; notes.push('交换第 '+(r+1)+' 行 ↔ 第 '+(p+1)+' 行') }
+    const piv=M[r][c];
+    if(!piv.isOne()){
+      for(let k=0;k<n;k++) M[r][k]=M[r][k].div(piv);
+      notes.push('R'+(r+1)+' ← R'+(r+1)+' ÷ ('+piv.toString()+')');
+    }
+    const ops=[];
+    for(let i=0;i<m;i++){
+      if(i===r || M[i][c].isZero()) continue;
+      const f=M[i][c];
+      for(let k=0;k<n;k++) M[i][k]=M[i][k].sub(f.mul(M[r][k]));
+      ops.push('R'+(i+1)+' ← R'+(i+1)+' − ('+f.toString()+')·R'+(r+1));
+    }
+    pivots.push(c);
+    steps.push({row:r, col:c, notes, ops, snap:M.map(row=>row.map(x=>x.toString()))});
+    r++;
+  }
+  return {rank:r, rref:M, pivots, m, n, steps};
+}
+
+function renderRank(){
+  const R=app.rank;
+  const host=$('rankDims'); host.innerHTML='';
+  host.append(
+    lab('行'), stepper(R.r, ()=>setRankDim('r',R.r-1), ()=>setRankDim('r',R.r+1)),
+    lab('列'), stepper(R.c, ()=>setRankDim('c',R.c-1), ()=>setRankDim('c',R.c+1))
+  );
+  const prev=R.inputs?readGrid(R.inputs):R.vals;
+  const g=makeGrid(R.r, R.c, prev);
+  $('rankGrid').innerHTML='';
+  $('rankGrid').appendChild(g.el);
+  R.inputs=g.inputs;
+  wireEnter(g.inputs, ()=>computeRank());
+  updatePasteHint();
+  save();
+}
+
+function setRankDim(which, v){
+  const R=app.rank;
+  v=clampN(v,1,12);
+  if(which==='r'){ R.r=v; if(R.linked) R.c=v; }
+  else { R.c=v; R.linked=(R.r===R.c) }
+  if(R.r===R.c) R.linked=true;
+  renderRank();
+  if(app.mode==='rank' && $('resultCard').style.display==='block') computeRank();
+}
+
+function computeRank(){
+  try{
+    const A=parseGrid(app.rank.inputs);
+    if(A.some(row=>row.some(v=>!v.isConst())))
+      throw new Error('含未知数时秩会随 x 的取值变化，暂不支持符号求秩（可先代入具体数值）');
+    const M=A.map(r=>r.map(v=>v.toF()));
+    const res=rankCalc(M);
+    app.state=Object.assign({kind:'rank', A:M}, res);
+    app.mode='rank';
+    $('seg').style.display='none';
+    $('toSingle').hidden=true;
+    $('resultCard').style.display='block';
+    render();
+    $('resultCard').scrollIntoView({behavior:'smooth',block:'start'});
+    save();
+  }catch(err){ showError(err.message) }
+}
+
+function renderRankResult(){
+  const st=app.state;
+  const dbox=$('decMode').parentElement;
+  if(dbox) dbox.style.display='none';
+  const {rank, m, n, rref, pivots}=st;
+  const full = rank===Math.min(m,n);
+  let h='<div class="cap">rank(A)　'+m+'×'+n+'</div>';
+  h+='<div class="detval">'+rank+'</div>';
+  h+='<div class="hint">'+(full?'满秩':'秩亏')+'　·　rank ≤ min('+m+','+n+') = '+Math.min(m,n)+'</div>';
+  h+='<div class="hint">行空间维数 = 列空间维数 = '+rank+'；解 Ax=0 的零空间维数 = n − rank = '+(n-rank)+'</div>';
+  if(m===n) h+='<div class="hint">方阵：'+(full?'可逆（det ≠ 0）':'不可逆（det = 0，奇异）')+'</div>';
+  h+='<div class="cap" style="margin-top:14px">行最简形 RREF</div>';
+  h+=matrixHTML(rref);
+  h+='<div class="hint">主元列：'+(pivots.length?pivots.map(c=>'第 '+(c+1)+' 列').join('、'):'无（零矩阵）')+'</div>';
+  $('pane').innerHTML=h;
+  renderSteps();
+}
+
+function rankStepsHTML(){
+  const st=app.state;
+  if(st.n>8 || st.m>8) return '<div class="hint">矩阵较大（超过 8 阶），过程已省略。</div>';
+  let s='<div class="hint">用初等行变换化到行最简形，非零行的行数就是秩。</div>';
+  st.steps.forEach((x,i)=>{
+    s+='<div class="step"><div class="scap">第 '+(i+1)+' 个主元：第 '+(x.col+1)+' 列'
+      +(x.notes.length?'　·　'+x.notes.join('；'):'')+'</div>'
+      + matrixHTML(x.snap, {hl:x.row})
+      + (x.ops.length?'<div class="ops">'+x.ops.join('<br>')+'</div>':'')
+      + '</div>';
+  });
+  s+='<div class="step"><div class="scap">非零行数 = '+st.rank+'</div></div>';
+  return s;
+}
+
 /* ================= 模式切换 ================= */
 function setMode(mode){
   app.mode=mode;
   Array.from($('modeSeg').children).forEach(b=>b.classList.toggle('on', b.dataset.mode===mode));
   $('singleCard').hidden = mode!=='single';
   $('mulCard').hidden = mode!=='mul';
+  $('rankCard').hidden = mode!=='rank';
   $('resultCard').style.display='none';
   app.state=null;
   $('seg').style.display='';
@@ -1072,9 +1201,13 @@ function setMode(mode){
   save();
 }
 function updatePasteHint(){
-  $('pasteHint').textContent = app.mode==='mul'
-    ? '连乘模式下用空行分隔各个矩阵，会自动识别行列数。'
-    : '按行粘贴：' + app.single.n + ' 行 × ' + app.single.n + ' 列，或一次性 ' + (app.single.n*app.single.n) + ' 个数字。';
+  if(app.mode==='mul'){
+    $('pasteHint').textContent = '连乘模式下用空行分隔各个矩阵，会自动识别行列数。';
+  }else if(app.mode==='rank'){
+    $('pasteHint').textContent = '按行粘贴即可，行列数会自动识别（例如 3×4 就粘 3 行、每行 4 个数）。';
+  }else{
+    $('pasteHint').textContent = '按行粘贴：' + app.single.n + ' 行 × ' + app.single.n + ' 列，或一次性 ' + (app.single.n*app.single.n) + ' 个数字。';
+  }
 }
 
 /* ================= 事件 ================= */
@@ -1103,6 +1236,17 @@ $('layoutSeg').addEventListener('click',e=>{
   app.mul.layout=b.dataset.layout;
   renderMul();
 });
+
+$('calcRank').onclick=computeRank;
+$('randRank').onclick=()=>{
+  const R=app.rank, v=[];
+  for(let r=0;r<R.r;r++){ const row=[]; for(let c=0;c<R.c;c++) row.push(String(Math.floor(Math.random()*11)-5)); v.push(row) }
+  R.vals=v; R.inputs=null; renderRank(); computeRank();
+};
+$('clearRank').onclick=()=>{
+  app.rank.vals=null; app.rank.inputs=null; renderRank();
+  $('resultCard').style.display='none'; app.state=null;
+};
 
 $('kplus').onclick=()=>{ if(app.mul.k<5){ app.mul.k++; renderMul(); refreshMulResult() } };
 $('kminus').onclick=()=>{ if(app.mul.k>2){ app.mul.k--; renderMul(); refreshMulResult() } };
@@ -1145,6 +1289,9 @@ $('copy').onclick=async ()=>{
   let txt='';
   if(st.kind==='mul'){
     txt = st.res.ok ? ('乘积 =\n'+matrixToText(st.res.res)) : '维度不匹配，无法相乘';
+  }else if(st.kind==='rank'){
+    txt='rank(A) = '+st.rank+'（'+st.m+'×'+st.n+'，主元列：'
+       +st.pivots.map(c=>c+1).join(', ')+'）\n\n行最简形 RREF =\n'+matrixToText(st.rref);
   }else if(st.symbolic){
     txt='det(A) = '+st.detP.toString()+'\n\nA* =\n'+matrixToText(st.adjP)
        +'\n\nA^(-1) = A* / det(A)';
@@ -1171,7 +1318,9 @@ $('toSingle').onclick=()=>{
 $('fill').onclick=()=>{
   const raw=$('bulk').value.replace(/[，、]/g,',');
   if(!raw.trim()) return;
-  if(app.mode==='single') fillSingle(raw); else fillMul(raw);
+  if(app.mode==='single') fillSingle(raw);
+  else if(app.mode==='mul') fillMul(raw);
+  else fillRank(raw);
 };
 
 function fillSingle(raw){
@@ -1211,13 +1360,25 @@ function fillMul(raw){
   computeMul();
 }
 
+function fillRank(raw){
+  const lines=raw.split(/\n+/).map(l=>l.trim()).filter(Boolean);
+  const rows=lines.map(l=>l.split(/[\s,]+/).filter(Boolean));
+  const cols=rows[0].length;
+  if(rows.some(r=>r.length!==cols)){ alert('每行的数字个数要相同'); return }
+  if(rows.length>12||cols>12){ alert('最大 12 阶'); return }
+  app.rank.r=rows.length; app.rank.c=cols; app.rank.linked=rows.length===cols;
+  app.rank.vals=rows; app.rank.inputs=null;
+  renderRank(); computeRank();
+}
+
 /* ================= 存档 ================= */
 function save(){
   try{
     const d={
       mode:app.mode, tab:app.tab,
       single:{n:app.single.n, vals:app.single.inputs?readGrid(app.single.inputs):app.single.vals},
-      mul:{k:app.mul.k, layout:app.mul.layout, mats:app.mul.mats.map(m=>({r:m.r,c:m.c,linked:m.linked,vals:m.inputs?readGrid(m.inputs):m.vals}))}
+      mul:{k:app.mul.k, layout:app.mul.layout, mats:app.mul.mats.map(m=>({r:m.r,c:m.c,linked:m.linked,vals:m.inputs?readGrid(m.inputs):m.vals}))},
+      rank:{r:app.rank.r, c:app.rank.c, linked:app.rank.linked, vals:app.rank.inputs?readGrid(app.rank.inputs):app.rank.vals}
     };
     localStorage.setItem(STORE, JSON.stringify(d));
   }catch(e){}
@@ -1239,12 +1400,14 @@ function load(){
     app.single={n:d.single.n||3, vals:d.single.vals||null, inputs:null};
     app.mul.k=(d.mul&&d.mul.k)?d.mul.k:2;
     app.mul.layout=(d.mul&&d.mul.layout)||'h';
+    if(d.rank) app.rank={r:d.rank.r||3, c:d.rank.c||3, linked:d.rank.linked!==false, vals:d.rank.vals||null, inputs:null};
     app.mul.mats=(d.mul&&d.mul.mats?d.mul.mats:[]).map(m=>({r:m.r,c:m.c,linked:m.linked!==false,vals:m.vals||null,inputs:null}));
     app.mode=d.mode||'single';
   }
   Array.from($('seg').children).forEach(b=>b.classList.toggle('on', b.dataset.tab===app.tab));
   renderSingle();
   renderMul();
+  renderRank();
   setMode(app.mode);
 })();
 </script>
