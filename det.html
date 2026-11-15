@@ -505,13 +505,29 @@ function matmul(A,B){
   return out;
 }
 
+/* 多项式矩阵乘法（连乘含未知数时用） */
+function matmulPoly(A,B){
+  const m=A.length, k=B.length, n=B[0].length, out=[];
+  for(let i=0;i<m;i++){
+    const row=[];
+    for(let j=0;j<n;j++){
+      let s=Poly.zero();
+      for(let t=0;t<k;t++) s=s.add(A[i][t].mul(B[t][j]));
+      row.push(s);
+    }
+    out.push(row);
+  }
+  return out;
+}
+
 /* 连乘：从左往右依次相乘，返回中间结果 */
-function mulChain(mats){
+function mulChain(mats, symbolic){
+  const mm = symbolic ? matmulPoly : matmul;
   let cur=mats[0].A, rows=mats[0].r, cols=mats[0].c;
   const steps=[];
   for(let i=1;i<mats.length;i++){
     if(mats[i].r!==cols) return {ok:false, badAt:i, expect:mats[i].r, need:cols, steps};
-    const next=matmul(cur, mats[i].A);
+    const next=mm(cur, mats[i].A);
     steps.push({idx:i, A:cur, B:mats[i].A, res:next, rows:rows, cols:mats[i].c});
     cur=next; cols=mats[i].c;
   }
@@ -671,6 +687,10 @@ function matrixHTML(m, opt={}){
   }
   return h+'</table></span></div>';
 }
+
+/* 单元格 → 文本（数字用 fmt，多项式用 toString） */
+function cellText(v){ return (v instanceof Poly) ? v.toString() : fmt(v) }
+function dispM(m){ return m.map(r=>r.map(cellText)) }
 
 /* ================= 单矩阵模式 ================= */
 /* values 传 undefined = 沿用当前格子里已有的数字；传 null = 全部清空；传数组 = 用这批值 */
@@ -964,7 +984,7 @@ function renderMul(){
     const eq=document.createElement('div'); eq.className='eq'; eq.textContent='=';
     host.appendChild(eq);
     const rb=document.createElement('div'); rb.className='chainres';
-    rb.innerHTML=matrixHTML(app.state.res.res);
+    rb.innerHTML=matrixHTML(dispM(app.state.res.res));
     host.appendChild(rb);
     // 屏幕放不下就把行内结果去掉（结果卡里有同样的一份，别让式子白占宽度）
     if(host.scrollWidth > host.clientWidth + 4){ eq.remove(); rb.remove() }
@@ -1010,11 +1030,11 @@ function computeMul(){
   try{
     const M=app.mul;
     const mats=M.mats.map((m,i)=>({r:m.r, c:m.c, A:parseGrid(m.inputs,'A'+(i+1))}));
-    if(mats.some(m=>m.A.some(row=>row.some(v=>!v.isConst()))))
-      throw new Error('连乘暂不支持含未知数的矩阵（单矩阵模式可以算它的行列式/伴随阵）');
-    const matsF=mats.map(m=>({r:m.r, c:m.c, A:m.A.map(row=>row.map(v=>v.toF()))}));
-    const r=mulChain(matsF);
-    app.state={kind:'mul', mats:matsF, res:r};
+    const symbolic=mats.some(m=>m.A.some(row=>row.some(v=>!v.isConst())));
+    const use = symbolic ? mats
+      : mats.map(m=>({r:m.r, c:m.c, A:m.A.map(row=>row.map(v=>v.toF()))}));
+    const r=mulChain(use, symbolic);
+    app.state={kind:'mul', mats:use, res:r, symbolic};
     $('resultCard').style.display='block';
     $('seg').style.display='none';
     $('toSingle').hidden=!(r.ok && r.rows===r.cols);
@@ -1041,7 +1061,7 @@ function renderMulResult(){
   }
   const chain=st.mats.map((m,i)=>'A'+(i+1)+'('+m.r+'×'+m.c+')').join(' × ');
   let h='<div class="cap">'+chain+' = <b>'+r.rows+'×'+r.cols+'</b></div>';
-  h+=matrixHTML(r.res);
+  h+=matrixHTML(dispM(r.res));
   if(st.mats.length>2) h+='<div class="hint">共 '+(st.mats.length-1)+' 次乘法，中间结果见「显示计算过程」。</div>';
   $('pane').innerHTML=h;
   renderSteps();
@@ -1057,7 +1077,7 @@ function mulStepsHTML(){
     s+='<div class="hint">从左往右依次相乘，每一步的中间结果：</div>';
     r.steps.slice(0,-1).forEach((x,i)=>{
       s+='<div class="step"><div class="scap">A1…A'+(i+2)+' = <b>'+x.res.length+'×'+x.res[0].length+'</b></div>'
-        + matrixHTML(x.res) + '</div>';
+        + matrixHTML(dispM(x.res)) + '</div>';
     });
   }
   const last=r.steps[r.steps.length-1];
@@ -1065,15 +1085,15 @@ function mulStepsHTML(){
   if(last && rows*cols<=16 && inner<=6){
     const terms=mulTerms(last.A,last.B);
     const lines=terms.map(t=>{
-      const prod=t.terms.map(([a,b])=>'('+fmt(a)+')('+fmt(b)+')').join(' + ');
-      let sum=F0();
+      const prod=t.terms.map(([a,b])=>'('+cellText(a)+')('+cellText(b)+')').join(' + ');
+      let sum=(t.terms.length && t.terms[0][0] instanceof Poly) ? Poly.zero() : F0();
       t.terms.forEach(([a,b])=>{ sum=sum.add(a.mul(b)) });
-      return 'c'+(t.i+1)+(t.j+1)+' = '+prod+' = '+fmt(sum);
+      return 'c'+(t.i+1)+(t.j+1)+' = '+prod+' = '+cellText(sum);
     });
     s+='<div class="step"><div class="scap">最后一次乘法逐元素展开（'+(last.A.length+'×'+last.A[0].length)
       +' · '+(last.B.length+'×'+last.B[0].length)+'）</div><div class="ops">'+lines.join('<br>')+'</div></div>';
   }
-  if(st.mats.length>2) s+='<div class="step"><div class="scap">最终结果</div>'+matrixHTML(r.res)+'</div>';
+  if(st.mats.length>2) s+='<div class="step"><div class="scap">最终结果</div>'+matrixHTML(dispM(r.res))+'</div>';
   return s;
 }
 
