@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>快捷指令生成器</title>
+<style>
+  :root{--bg:#f5f5f7;--card:#fff;--txt:#1c1c1e;--sub:#6e6e73;--line:#e3e3e8;--accent:#ff9500;--code:#f2f2f7;--ok:#34c759}
+  @media (prefers-color-scheme: dark){ :root{--bg:#000;--card:#1c1c1e;--txt:#f2f2f7;--sub:#9a9aa0;--line:#2c2c2e;--code:#2c2c2e} }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--txt);min-height:100vh;
+       font:16px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC",system-ui,sans-serif;
+       padding:calc(env(safe-area-inset-top) + 20px) 16px calc(env(safe-area-inset-bottom) + 28px);
+       max-width:560px;margin:0 auto}
+  h1{font-size:21px;font-weight:700;margin:0 0 4px;letter-spacing:-.02em}
+  .sub{color:var(--sub);font-size:13px;margin-bottom:18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:12px}
+  .card h2{font-size:15px;margin:0 0 10px;font-weight:650;display:flex;align-items:center;gap:8px}
+  .num{width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;
+       display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;font-size:14.5px}
+  .row+.row{border-top:1px solid var(--line)}
+  input[type=text],input[type=number]{font:inherit;font-size:14px;color:var(--txt);background:var(--code);
+    border:1px solid var(--line);border-radius:9px;padding:7px 9px;width:150px;text-align:right;
+    -webkit-appearance:none;appearance:none}
+  input[type=number]{width:80px}
+  input[type=checkbox]{-webkit-appearance:none;appearance:none;width:46px;height:28px;border-radius:14px;
+    background:#d1d1d6;position:relative;transition:background .2s;flex:0 0 auto;margin:0}
+  input[type=checkbox]:checked{background:var(--ok)}
+  input[type=checkbox]::after{content:"";position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;
+    background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+  input[type=checkbox]:checked::after{transform:translateX(18px)}
+  .hint{font-size:12.5px;color:var(--sub);line-height:1.65;margin-top:8px}
+  button{font:inherit;font-size:15px;font-weight:600;border:none;border-radius:12px;padding:13px;
+         width:100%;cursor:pointer;background:var(--accent);color:#fff}
+  button:active{transform:scale(.99);opacity:.9}
+  button.ghost{background:var(--code);color:var(--txt);border:1px solid var(--line);font-weight:500;font-size:14px;padding:11px}
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .out{font:12px/1.6 ui-monospace,Menlo,monospace;background:var(--code);border:1px solid var(--line);
+       border-radius:10px;padding:10px;white-space:pre-wrap;word-break:break-all;max-height:240px;overflow:auto;margin-top:10px;display:none}
+  .warn{font-size:12.5px;line-height:1.65;color:#8a5a00;background:#fff7e6;border:1px solid #ffe0a3;border-radius:10px;padding:10px 12px;margin-top:10px}
+  @media (prefers-color-scheme: dark){ .warn{background:#2a2004;border-color:#584000;color:#ffcf70} }
+  code{font-family:ui-monospace,Menlo,monospace;font-size:.92em;background:var(--code);padding:1px 4px;border-radius:4px}
+  a{color:var(--accent)}
+</style>
+<meta name="viewport" content="width=390, initial-scale=1.0, user-scalable=yes">
+</head>
+<body>
+<h1>快捷指令生成器</h1>
+<div class="sub">生成一个「响铃 + 震动」的快捷指令，再挂到自动化上</div>
+
+<div class="card">
+  <h2><span class="num">1</span>提醒来源</h2>
+  <div class="row">App 名称
+    <input type="text" id="app" value="ChatGPT">
+  </div>
+  <div class="hint">只用于通知文案，以及导入后你挑自动化时对照，不影响触发。</div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>提醒方式</h2>
+  <div class="row">响计时器（响铃 + 震动）
+    <input type="checkbox" id="useTimer" checked>
+  </div>
+  <div class="row">时长（秒）
+    <input type="number" id="secs" value="3" min="1" max="3600">
+  </div>
+  <div class="row">弹通知
+    <input type="checkbox" id="useNote" checked>
+  </div>
+  <div class="row">通知标题
+    <input type="text" id="title" value="ChatGPT 新消息">
+  </div>
+  <div class="row">短震动
+    <input type="checkbox" id="useVib" checked>
+  </div>
+  <div class="hint">计时器到点会持续响铃并震动，锁屏也拦不住，是最强的一档；通知和短震动更温和。</div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>生成</h2>
+  <div class="btns">
+    <button id="gen">生成并下载</button>
+    <button class="ghost" id="prev">预览动作</button>
+  </div>
+  <div class="out" id="out"></div>
+  <div class="hint">下载得到 .shortcut 文件，点它就能导入「快捷指令」。</div>
+</div>
+
+<div class="card">
+  <h2>怎么让它自动跑</h2>
+  <div class="hint" style="font-size:13px;line-height:1.8">
+    <b>iOS 26.2 没有「收到某 App 通知时」这个触发器</b> —— 通知内容不对外开放，iOS 27 才加了这一项。所以现实里有三条路：<br><br>
+    <b>① 升级 iOS 27（真正全自动）</b><br>
+    快捷指令 → 自动化 → + → <b>通知</b> → 选 ChatGPT →（可选）限定标题/内容 → 选刚导入的快捷指令 → 关闭「运行前询问」。<br><br>
+    <b>② 留在 26：一键触发</b><br>
+    把快捷指令放到主屏幕、锁屏，或绑到 <b>操作按钮</b>／<b>轻点背面</b>（设置 → 辅助功能 → 触控 → 轻点背面）。看到通知点一下，立刻响。<br><br>
+    <b>③ 留在 26：打开 ChatGPT 就跑</b><br>
+    自动化 → App → ChatGPT →「已打开」→ 选这个快捷指令。每次进 App 先响一遍。
+  </div>
+  <div class="warn">iOS 26 上没有任何 App（包括第三方）能读到别的 App 的通知内容，这是系统沙箱，不是谁的疏忽。</div>
+</div>
+
+<script>
+/* gen-core.js
+ * 极简二进制 plist（bplist00）写入器 + 快捷指令工作流构造
+ * 只在浏览器里用：plistBinary(obj) → base64 字符串
+ */
+(function (global) {
+
+  /* ---------- 二进制 plist ---------- */
+
+  function utf16be(str) {
+    var b = [];
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charCodeAt(i);
+      b.push((c >> 8) & 0xff, c & 0xff);
+    }
+    return b;
+  }
+
+  function intBytes(n, minLen) {
+    // 有符号大端
+    var neg = n < 0;
+    var u = neg ? BigInt(n) : BigInt(n);
+    var bytes = [];
+    if (u === 0n) bytes = [0];
+    while (u > 0n) { bytes.unshift(Number(u & 0xffn)); u >>= 8n; }
+    if (neg) {
+      // 补码
+      var buf = new Uint8Array(Math.max(bytes.length, 1));
+      for (var i = 0; i < buf.length; i++) buf[i] = bytes[i] || 0;
+      for (var j = 0; j < buf.length; j++) buf[j] = (~buf[j]) & 0xff;
+      // +1
+      var carry = 1;
+      for (var k = buf.length - 1; k >= 0; k--) { var v = buf[k] + carry; buf[k] = v & 0xff; carry = v >> 8; }
+      bytes = Array.prototype.slice.call(buf);
+    }
+    var len = Math.max(minLen || 1, bytes.length);
+    var out = [];
+    for (var p = bytes.length; p < len; p++) out.push(neg ? 0xff : 0x00);
+    return out.concat(bytes);
+  }
+
+  function buildPlist(root) {
+    var objs = [];        // 每个对象的 {bytes, refs}
+    var refsByKey = {};   // 去重：同样的值只写一次
+
+    function keyOf(v) {
+      try { return typeof v + ':' + JSON.stringify(v); } catch (e) { return null; }
+    }
+
+    // 带扩展长度的 marker：type 高四位 + 0xF，再跟一个"内联整数"长度
+    function marker(type, count) {
+      if (count < 15) return [((type << 4) | count) & 0xff];
+      return [((type << 4) | 0x0f) & 0xff].concat(uintBytes(count));
+    }
+
+    // 无符号大端，最短表示（至少 1 字节）
+    function uintBytes(n) {
+      var b = [];
+      do { b.unshift(n & 0xff); n = Math.floor(n / 256); } while (n > 0);
+      return [((0x1 << 4) | (b.length - 1)) & 0xff].concat(b);
+    }
+
+    function add(v) {
+      var k = keyOf(v);
+      if (k !== null && refsByKey[k] !== undefined) return refsByKey[k];
+      var idx = objs.length;
+      objs.push(null);
+      if (k !== null) refsByKey[k] = idx;
+      objs[idx] = make(v);
+      return idx;
+    }
+
+    function make(v) {
+      if (v === null || v === undefined) return { bytes: [0x00], refs: [] };
+      if (typeof v === 'boolean') return { bytes: [v ? 0x09 : 0x08], refs: [] };
+
+      if (typeof v === 'number') {
+        // 浮点
+        if (!Number.isInteger(v)) {
+          var dv = new DataView(new ArrayBuffer(8));
+          dv.setFloat64(0, v);
+          var fb = [];
+          for (var i = 0; i < 8; i++) fb.push(dv.getUint8(i));
+          return { bytes: [0x23].concat(fb), refs: [] };
+        }
+        // 整数：0..255 用 1 字节，0..65535 用 2 字节；负数用 1/2/4 字节补码。
+        // 注意：不能把 8/9 写成 0x08/0x09 的单字节 marker —— 那会被解析成布尔值，
+        // 所以整数一律写成带长度的形式（marker 0x10..0x12 + 数据）。
+        if (v >= 0 && v < 256) return { bytes: [0x10, v], refs: [] };
+        if (v >= 0 && v < 65536) return { bytes: [0x11, (v >> 8) & 0xff, v & 0xff], refs: [] };
+        if (v >= 0 && v < 4294967296) {
+          return { bytes: [0x12, (v >>> 24) & 0xff, (v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff], refs: [] };
+        }
+        if (v < 0 && v >= -128) return { bytes: [0x10].concat(intBytes(v, 1)), refs: [] };
+        if (v < 0 && v >= -32768) return { bytes: [0x11].concat(intBytes(v, 2)), refs: [] };
+        return { bytes: [0x12].concat(intBytes(v, 4)), refs: [] };
+      }
+
+      if (typeof v === 'string') {
+        if (/^[\x00-\x7f]*$/.test(v)) {
+          var s = [];
+          for (var c = 0; c < v.length; c++) s.push(v.charCodeAt(c));
+          return { bytes: marker(0x5, v.length).concat(s), refs: [] };
+        }
+        return { bytes: marker(0x6, v.length).concat(utf16be(v)), refs: [] };
+      }
+
+      if (Array.isArray(v)) {
+        return { bytes: marker(0xA, v.length), refs: v.map(add) };
+      }
+
+      if (typeof v === 'object') {
+        var keys = Object.keys(v);
+        return {
+          bytes: marker(0xD, keys.length),
+          refs: keys.map(function (k) { return add(k); })
+            .concat(keys.map(function (k) { return add(v[k]); }))
+        };
+      }
+      return make(String(v));
+    }
+
+    add(root);
+
+    var numObjects = objs.length;
+    var refSize = numObjects < 256 ? 1 : (numObjects < 65536 ? 2 : 4);
+
+    var headerLen = 8;   // "bplist00"
+    var body = [];
+    var offsets = [];
+    for (var i = 0; i < objs.length; i++) {
+      // 偏移必须是从文件开头算起的绝对位置，含 8 字节 magic header
+      offsets.push(headerLen + body.length);
+      var node = objs[i];
+      for (var b = 0; b < node.bytes.length; b++) body.push(node.bytes[b]);
+      node.refs.forEach(function (r) {
+        if (refSize === 1) body.push(r & 0xff);
+        else if (refSize === 2) body.push((r >> 8) & 0xff, r & 0xff);
+        else body.push((r >>> 24) & 0xff, (r >> 16) & 0xff, (r >> 8) & 0xff, r & 0xff);
+      });
+    }
+
+    var ofsTableStart = headerLen + body.length;
+    var ofsSize = 1;
+    while ((1 << (8 * ofsSize)) <= ofsTableStart) ofsSize++;
+
+    var ofsBytes = [];
+    offsets.forEach(function (o) {
+      for (var k = ofsSize - 1; k >= 0; k--) ofsBytes.push(Math.floor(o / Math.pow(2, 8 * k)) & 0xff);
+    });
+
+    function u64(n) {
+      var out = [];
+      for (var k = 7; k >= 0; k--) out.push(Math.floor(n / Math.pow(2, 8 * k)) & 0xff);
+      return out;
+    }
+
+    var trailer = [0, 0, 0, 0, 0, 0, ofsSize, refSize]
+      .concat(u64(numObjects)).concat(u64(0)).concat(u64(ofsTableStart));
+
+    return [0x62, 0x70, 0x6c, 0x69, 0x73, 0x74, 0x30, 0x30]
+      .concat(body).concat(ofsBytes).concat(trailer);
+  }
+
+  function bytesToB64(bytes) {
+    var CH = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    var out = '';
+    for (var i = 0; i < bytes.length; i += 3) {
+      var b0 = bytes[i] & 0xff,
+          b1 = i + 1 < bytes.length ? bytes[i + 1] & 0xff : 0,
+          b2 = i + 2 < bytes.length ? bytes[i + 2] & 0xff : 0;
+      out += CH[b0 >> 2];
+      out += CH[((b0 & 3) << 4) | (b1 >> 4)];
+      out += i + 1 < bytes.length ? CH[((b1 & 15) << 2) | (b2 >> 6)] : '=';
+      out += i + 2 < bytes.length ? CH[b2 & 63] : '=';
+    }
+    return out;
+  }
+
+  function plistBinary(obj) {
+    return bytesToB64(buildPlist(obj));
+  }
+
+  function b64ToBytes(str) {
+    var CH = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    var lookup = {};
+    for (var i = 0; i < 64; i++) lookup[CH[i]] = i;
+    var out = new Uint8Array(Math.floor(str.length * 3 / 4));
+    var o = 0, buf = 0, bits = 0;
+    for (var j = 0; j < str.length; j++) {
+      var ch = str[j];
+      if (lookup[ch] === undefined) continue;
+      buf = (buf << 6) | lookup[ch];
+      bits += 6;
+      if (bits >= 8) { bits -= 8; out[o++] = (buf >> bits) & 0xff; }
+    }
+    return out.subarray(0, o);
+  }
+
+  function uuid() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      var r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+
+  function qty(mag, unit) {
+    return { Value: { Magnitude: mag, Unit: unit }, WFSerializationType: 'WFQuantityFieldValue' };
+  }
+
+  function buildWorkflow(o) {
+    var actions = [];
+
+    if (o.useTimer) {
+      actions.push({
+        WFWorkflowActionIdentifier: 'is.workflow.actions.timer.start',
+        WFWorkflowActionParameters: { WFDuration: qty(o.secs, 'sec'), UUID: uuid() }
+      });
+    }
+    if (o.useNote) {
+      actions.push({
+        WFWorkflowActionIdentifier: 'is.workflow.actions.notification',
+        WFWorkflowActionParameters: {
+          WFNotificationActionTitle: o.title || '新消息',
+          WFNotificationActionBody: (o.app || 'App') + ' 有新消息',
+          WFNotificationActionSound: true,
+          UUID: uuid()
+        }
+      });
+    }
+    if (o.useVib) {
+      actions.push({
+        WFWorkflowActionIdentifier: 'is.workflow.actions.vibrate',
+        WFWorkflowActionParameters: { UUID: uuid() }
+      });
+    }
+
+    return {
+      WFWorkflow: {
+        WFWorkflowClientVersion: '1302.1.3',
+        WFWorkflowClientRelease: '18.0',
+        WFWorkflowMinimumClientVersion: 900,
+        WFWorkflowMinimumClientVersionString: '900',
+        WFWorkflowIcon: { WFWorkflowIconStartColor: 4282601983, WFWorkflowIconGlyphNumber: 59511 },
+        WFWorkflowImportQuestions: [],
+        WFWorkflowInputContentItemClasses: ['WFStringContentItem', 'WFURLContentItem'],
+        WFWorkflowOutputContentItemClasses: [],
+        WFWorkflowHasOutputFallback: false,
+        WFWorkflowHasShortcutInputVariables: false,
+        WFWorkflowTypes: ['NCWidget', 'WatchKit'],
+        WFWorkflowActions: actions
+      }
+    };
+  }
+
+  global.plistBinary = plistBinary;
+  global.b64ToBytes = b64ToBytes;
+  global.buildWorkflow = buildWorkflow;
+})(typeof window !== 'undefined' ? window : this);
+
+</script>
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var out=$('out');
+
+  function readOpts(){
+    var app=($('app').value||'ChatGPT').trim();
+    return {
+      name: '通知提醒-'+app,
+      app: app,
+      useTimer: $('useTimer').checked,
+      secs: Math.max(1, parseInt($('secs').value,10)||3),
+      useNote: $('useNote').checked,
+      title: ($('title').value||'新消息').trim(),
+      useVib: $('useVib').checked
+    };
+  }
+
+  $('prev').onclick=function(){
+    var wf=buildWorkflow(readOpts());
+    out.style.display='block';
+    out.textContent=wf.WFWorkflow.WFWorkflowActions.map(function(a,i){
+      return (i+1)+'. '+a.WFWorkflowActionIdentifier+'\n   '+JSON.stringify(a.WFWorkflowActionParameters);
+    }).join('\n');
+  };
+
+  $('gen').onclick=function(){
+    var o=readOpts();
+    var bytes=b64ToBytes(plistBinary(buildWorkflow(o)));
+    var blob=new Blob([bytes],{type:'application/x-shortcut'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;
+    a.download=o.name.replace(/[\\/:*?"<>|]/g,'_')+'.shortcut';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url)},5000);
+    out.style.display='block';
+    out.textContent='已生成 '+a.download+'\n'+bytes.length+' 字节，'+buildWorkflow(o).WFWorkflow.WFWorkflowActions.length+' 个动作';
+  };
+})();
+</script>
+</body>
+</html>
